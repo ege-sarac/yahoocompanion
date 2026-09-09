@@ -1,0 +1,33 @@
+{
+  "name": "yahoo-companion",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "injuries:validate": "tsx scripts/validateInjuries.ts",
+    "players:validate": "tsx scripts/validatePlayers.ts",
+    "newcomers:validate": "tsx scripts/validateNewcomers.ts",
+    "preview": "vite preview",
+    "rank:players": "tsx scripts/rankPlayers.ts",
+    "readiness:validate": "tsx scripts/validateReadiness.ts",
+    "test": "vitest run",
+    "test:pipeline": ".\\.venv\\Scripts\\python.exe -m unittest scripts.nba_data.test_process_nba_data",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.7.2",
+    "tsx": "^4.20.6",
+    "vite": "^6.1.0",
+    "vitest": "^5.0.0"
+  }
+}
