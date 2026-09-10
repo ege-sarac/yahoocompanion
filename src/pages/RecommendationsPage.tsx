@@ -2,6 +2,7 @@ import { useMemo } from "react";
 
 import { useLeagueConfig } from "../context/LeagueConfigContext";
 import { useDraft } from "../context/DraftContext";
+import { PositionIntentControls } from "../components/PositionIntentControls";
 import type { PlayerDataSource } from "../data/playerLoader";
 import {
   deriveMyRoster,
@@ -45,7 +46,7 @@ export function RecommendationsPage({
   newPlayerInputs,
 }: RecommendationsPageProps) {
   const { config } = useLeagueConfig();
-  const { state } = useDraft();
+  const { state, markUnavailable } = useDraft();
   const currentDraftInfo = getDraftInfo(state.currentOverallPick, config);
   const currentRound =
     currentDraftInfo?.round ?? config.rounds;
@@ -65,8 +66,11 @@ export function RecommendationsPage({
         draftPicks: state.picks,
         leagueConfig: config,
         newPlayerInputs,
+        manualUnavailablePlayerIds: state.manualUnavailablePlayerIds,
+        positionIntent: state.positionIntent,
+        teamEcosystemEnabled: state.teamEcosystemEnabled,
       }),
-    [config, currentRound, dataSource, myRoster, newPlayerInputs, players, state.currentOverallPick, state.draftedPlayerIds, state.picks],
+    [config, currentRound, dataSource, myRoster, newPlayerInputs, players, state.currentOverallPick, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.teamEcosystemEnabled],
   );
   const topRecommendations = result.topRecommendations;
   const stage = getRecommendationStage(currentRound, config);
@@ -123,6 +127,9 @@ export function RecommendationsPage({
             {result.recommendations.length} projectable
           </span>
         </div>
+        <PositionIntentControls urgency={result.positionNeedUrgency} filterWarning={result.filterExcludesAllFeasible} />
+        <p className="feasibility-summary">Feasibility slack: <strong>{result.rosterFeasibility.feasibilitySlack}</strong> · Restrictive picks required: <strong>{result.rosterFeasibility.minimumPicksNeededForRestrictiveSlots}</strong></p>
+        {result.positionFilterHadNoMatches && <div className="model-warning">No available players match the current {state.positionIntent.positions.join("/")} filter. Clear the filter to show all players.</div>}
 
         {topRecommendations.length === 0 ? (
           <div className="empty-state">
@@ -220,6 +227,8 @@ export function RecommendationsPage({
                           ))}
                         </div>
                       </details>
+                      {recommendation.teamContextSummary && state.showTeamContextDetails && <small className="team-context-inline">Team context: {recommendation.teamContextSummary.label} ({recommendation.teamContextSummary.adjustmentPercent >= 0 ? "+" : ""}{formatPercent(recommendation.teamContextSummary.adjustmentPercent)})</small>}
+                      <button className="compact-button" onClick={() => markUnavailable(recommendation.player.id)} type="button">Mark unavailable</button>
                     </td>
                     <td>
                       {recommendation.player.yahooPositions.join(" / ") || (

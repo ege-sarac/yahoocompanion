@@ -1,5 +1,5 @@
 import { DEFAULT_LEAGUE_CONFIG, getTotalDraftPicks } from "../config/leagueConfig";
-import type { DraftPick, DraftState, LeagueConfig, Player } from "../types";
+import type { DraftPick, DraftState, LeagueConfig, Player, PositionIntent } from "../types";
 import { getMyOverallPicks, getSnakeDraftTeamNumber } from "./draftOrder";
 
 export type DraftAction =
@@ -21,6 +21,11 @@ export function createInitialDraftState(): DraftState {
     draftedPlayerIds: [],
     myPlayerIds: [],
     currentOverallPick: 1,
+    manualUnavailablePlayerIds: [],
+    positionIntent: { mode: "Normal", positions: [] },
+    keepPositionPreferenceAfterMyPick: false,
+    teamEcosystemEnabled: true,
+    showTeamContextDetails: true,
   };
 }
 
@@ -78,6 +83,9 @@ export function draftPlayer(state: DraftState, playerId: string, config: LeagueC
   if (state.draftedPlayerIds.includes(normalizedPlayerId)) {
     throw new Error("That player has already been drafted.");
   }
+  if (state.manualUnavailablePlayerIds.includes(normalizedPlayerId)) {
+    throw new Error("That player is marked unavailable.");
+  }
 
   const draftInfo = getDraftInfo(state.currentOverallPick, config);
   if (!draftInfo) {
@@ -89,13 +97,16 @@ export function draftPlayer(state: DraftState, playerId: string, config: LeagueC
     playerId: normalizedPlayerId,
   };
 
+  const shouldClearIntent = draftInfo.isMyTeam && !state.keepPositionPreferenceAfterMyPick;
   return {
+    ...state,
     picks: [...state.picks, pick],
     draftedPlayerIds: [...state.draftedPlayerIds, normalizedPlayerId],
     myPlayerIds: draftInfo.isMyTeam
       ? [...state.myPlayerIds, normalizedPlayerId]
       : state.myPlayerIds,
     currentOverallPick: state.currentOverallPick + 1,
+    positionIntent: shouldClearIntent ? { mode: "Normal", positions: [] } : state.positionIntent,
   };
 }
 
@@ -113,7 +124,47 @@ export function undoLastPick(state: DraftState, config: LeagueConfig = DEFAULT_L
   }
 
   const picks = state.picks.slice(0, -1);
-  return stateFromPicks(picks, config);
+  return stateFromPicks(picks, config, state);
+}
+
+export function replaceDraftPick(
+  state: DraftState,
+  overallPick: number,
+  playerId: string,
+  knownPlayerIds?: ReadonlySet<string>,
+  config: LeagueConfig = DEFAULT_LEAGUE_CONFIG,
+): DraftState {
+  const normalized = playerId.trim();
+  if (knownPlayerIds && !knownPlayerIds.has(normalized)) throw new Error("Replacement player does not exist.");
+  const index = state.picks.findIndex((pick) => pick.overallPick === overallPick);
+  if (index < 0) throw new Error("That historical pick was not found.");
+  if (state.picks.some((pick, pickIndex) => pickIndex !== index && pick.playerId === normalized)) throw new Error("That player is already drafted at another pick.");
+  const picks = state.picks.map((pick, pickIndex) => pickIndex === index ? { ...pick, playerId: normalized } : pick);
+  return stateFromPicks(picks, config, {
+    ...state,
+    manualUnavailablePlayerIds: state.manualUnavailablePlayerIds.filter((id) => id !== normalized),
+  });
+}
+
+export function markPlayerUnavailable(state: DraftState, playerId: string): DraftState {
+  const normalized = playerId.trim();
+  if (!normalized) throw new Error("A player ID is required.");
+  if (state.draftedPlayerIds.includes(normalized)) throw new Error("That player already has a recorded draft pick.");
+  if (state.manualUnavailablePlayerIds.includes(normalized)) return state;
+  return { ...state, manualUnavailablePlayerIds: [...state.manualUnavailablePlayerIds, normalized] };
+}
+
+export function restorePlayerAvailability(state: DraftState, playerId: string): DraftState {
+  return { ...state, manualUnavailablePlayerIds: state.manualUnavailablePlayerIds.filter((id) => id !== playerId) };
+}
+
+export function setPositionIntent(state: DraftState, intent: PositionIntent): DraftState {
+  const positions = [...new Set(intent.positions)].filter((position) => position === "G" || position === "F" || position === "C");
+  return { ...state, positionIntent: { mode: intent.mode, positions } };
+}
+
+export function updateDraftPreferences(state: DraftState, preferences: Partial<Pick<DraftState, "keepPositionPreferenceAfterMyPick" | "teamEcosystemEnabled" | "showTeamContextDetails">>): DraftState {
+  return { ...state, ...preferences };
 }
 
 export function deriveMyRoster(
@@ -133,7 +184,7 @@ export function draftReducer(state: DraftState, action: DraftAction): DraftState
     case "undo-last-pick":
       return undoLastPick(state, action.config);
     case "reset":
-      return createInitialDraftState();
+      return { ...createInitialDraftState(), keepPositionPreferenceAfterMyPick: state.keepPositionPreferenceAfterMyPick, teamEcosystemEnabled: state.teamEcosystemEnabled, showTeamContextDetails: state.showTeamContextDetails };
     case "replace":
       return action.state;
   }
@@ -161,7 +212,19 @@ export function validateDraftState(input: unknown, config: LeagueConfig = DEFAUL
     throw new Error("Imported draft contains a player more than once.");
   }
 
-  const expected = stateFromPicks(picks, config);
+  const migrated = {
+    manualUnavailablePlayerIds: input.manualUnavailablePlayerIds ?? [],
+    positionIntent: input.positionIntent ?? { mode: "Normal", positions: [] },
+    keepPositionPreferenceAfterMyPick: input.keepPositionPreferenceAfterMyPick ?? false,
+    teamEcosystemEnabled: input.teamEcosystemEnabled ?? true,
+    showTeamContextDetails: input.showTeamContextDetails ?? true,
+  };
+  validateStringArray(migrated.manualUnavailablePlayerIds, "manualUnavailablePlayerIds");
+  if (new Set(migrated.manualUnavailablePlayerIds).size !== migrated.manualUnavailablePlayerIds.length) throw new Error("manualUnavailablePlayerIds contains duplicates.");
+  if (migrated.manualUnavailablePlayerIds.some((id) => playerIds.includes(id))) throw new Error("A manually unavailable player also has a recorded draft pick.");
+  if (!isRecord(migrated.positionIntent) || !["Normal", "Prefer", "Filter"].includes(String(migrated.positionIntent.mode)) || !Array.isArray(migrated.positionIntent.positions) || migrated.positionIntent.positions.some((position) => !["G", "F", "C"].includes(String(position)))) throw new Error("positionIntent is invalid.");
+  if (typeof migrated.keepPositionPreferenceAfterMyPick !== "boolean" || typeof migrated.teamEcosystemEnabled !== "boolean" || typeof migrated.showTeamContextDetails !== "boolean") throw new Error("Draft preferences are invalid.");
+  const expected = stateFromPicks(picks, config, migrated as Partial<DraftState>);
   validateStringArray(input.draftedPlayerIds, "draftedPlayerIds");
   validateStringArray(input.myPlayerIds, "myPlayerIds");
 
@@ -178,8 +241,10 @@ export function validateDraftState(input: unknown, config: LeagueConfig = DEFAUL
   return expected;
 }
 
-function stateFromPicks(picks: DraftPick[], config: LeagueConfig = DEFAULT_LEAGUE_CONFIG): DraftState {
+function stateFromPicks(picks: DraftPick[], config: LeagueConfig = DEFAULT_LEAGUE_CONFIG, preserved: Partial<DraftState> = {}): DraftState {
   return {
+    ...createInitialDraftState(),
+    ...preserved,
     picks: [...picks],
     draftedPlayerIds: picks.map((pick) => pick.playerId),
     myPlayerIds: picks

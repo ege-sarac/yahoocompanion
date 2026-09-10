@@ -1717,3 +1717,28 @@ main {
   .readiness-grid,
   .newcomer-projection-summary { grid-template-columns: 1fr; }
 }
+.position-intent { margin: 1rem 0; padding: .85rem; border: 1px solid var(--border, #d7dde7); border-radius: .75rem; background: rgba(255,255,255,.55); display: grid; gap: .65rem; }
+.position-control-row, .urgency-row { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; }
+.position-control-row strong, .position-control-row > span, .urgency-row > span:first-child { min-width: 7rem; }
+.position-control-row button { min-width: 2.6rem; padding: .4rem .65rem; }
+.position-control-row button.active { background: #153f70; color: white; border-color: #153f70; }
+.position-control-row .clear-intent { margin-left: .25rem; min-width: auto; }
+.urgency-chip { font-size: .72rem; font-weight: 800; padding: .28rem .45rem; border-radius: 999px; background: #e8edf4; }
+.urgency-chip.moderate { background: #fff1bd; color: #6d4d00; }
+.urgency-chip.high, .urgency-chip.critical { background: #ffe0dc; color: #8a2217; }
+.urgency-chip.critical { outline: 2px solid #b52f21; }
+.intent-warning { margin: 0; color: #8a2217; font-weight: 700; }
+.feasibility-summary { margin: .5rem 0 1rem; }
+.draft-repair { margin-top: 1rem; }
+.repair-history, .restore-list, .repair-editor { display: grid; gap: .5rem; }
+.repair-history { list-style: none; padding: 0; }
+.repair-history { max-height: 22rem; overflow: auto; }
+.repair-history li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .5rem 0; border-bottom: 1px solid var(--border, #d7dde7); }
+.repair-editor label { display: grid; gap: .35rem; }
+.restore-list { margin-top: .65rem; }
+.player-result { display: flex; align-items: center; justify-content: space-between; }
+.result-actions { display: flex; gap: .4rem; }
+.team-context-inline { display: block; margin: .5rem 0; }
+.compact-button { padding: .35rem .55rem; font-size: .75rem; }
+.settings-checks { display: grid; gap: .75rem; }
+.settings-checks label { display: flex; flex-direction: row; align-items: center; gap: .55rem; }

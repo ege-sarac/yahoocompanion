@@ -4,6 +4,9 @@ import type {
   NewPlayerProjectionInput,
   ProjectionSource,
 } from "./newPlayer";
+import type { CandidateFeasibility, PositionNeedUrgency, RosterFeasibility } from "./feasibility";
+import type { PositionIntent } from "./draft";
+import type { TeamContextSummary, TeamRoleDebug } from "./teamContext";
 
 export interface ProjectionMetrics {
   projection: Projection;
@@ -82,6 +85,12 @@ export interface PlayerRecommendation extends ProjectionMetrics {
   components: RecommendationComponents;
   contributions: RecommendationContributions;
   explanations: string[];
+  manualPositionMatch: boolean;
+  manualPositionPriorityComponent: number;
+  automaticPositionNeedComponent: number;
+  rosterFeasibilityComponent: number;
+  candidateFeasibility: CandidateFeasibility;
+  teamContextSummary?: TeamContextSummary;
 }
 
 export interface RecommendationResult {
@@ -93,4 +102,11 @@ export interface RecommendationResult {
   topRecommendations: PlayerRecommendation[];
   recentRuns: Record<YahooPosition, PositionRunSummary>;
   draftProgress: number;
+  rosterFeasibility: RosterFeasibility;
+  positionNeedUrgency: Record<YahooPosition, PositionNeedUrgency>;
+  positionIntent: PositionIntent;
+  positionFilterActive: boolean;
+  positionFilterHadNoMatches: boolean;
+  filterExcludesAllFeasible: boolean;
+  teamEcosystemDiagnostics: { teamsBuilt: number; playersEvaluated: number; capViolations: number; unresolvedTeamPlayers: number; teams: TeamRoleDebug[] };
 }

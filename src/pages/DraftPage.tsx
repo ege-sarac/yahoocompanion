@@ -10,6 +10,8 @@ import {
 import { getTotalDraftPicks } from "../config/leagueConfig";
 import { useLeagueConfig } from "../context/LeagueConfigContext";
 import { useDraft } from "../context/DraftContext";
+import { PositionIntentControls } from "../components/PositionIntentControls";
+import { DraftRepair } from "../components/DraftRepair";
 import type { PlayerDataSource } from "../data/playerLoader";
 import {
   deriveMyRoster,
@@ -36,6 +38,7 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
     resetDraft,
     exportDraft,
     importDraft,
+    markUnavailable,
   } = useDraft();
   const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -49,14 +52,14 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
   );
   const availablePlayers = useMemo(() => {
     if (!query.trim()) return [];
-    const drafted = new Set(state.draftedPlayerIds);
+    const drafted = new Set([...state.draftedPlayerIds, ...state.manualUnavailablePlayerIds]);
     return players
       .filter(
         (player) =>
           !drafted.has(player.id) && matchesPlayerName(player.name, query),
       )
       .slice(0, 12);
-  }, [players, query, state.draftedPlayerIds]);
+  }, [players, query, state.draftedPlayerIds, state.manualUnavailablePlayerIds]);
   const currentInfo = getDraftInfo(state.currentOverallPick, config);
   const nextMyPick = getNextMyPick(state.currentOverallPick, config);
   const picksUntilMine = getPicksUntilMyNextPick(state.currentOverallPick, config);
@@ -65,8 +68,8 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
     () => deriveMyRoster(state, players),
     [players, state],
   );
-  const topDraftRecommendations = useMemo(() => {
-    if (!currentInfo?.isMyTeam || dataSource !== "processed") return [];
+  const draftRecommendationResult = useMemo(() => {
+    if (!currentInfo?.isMyTeam || dataSource !== "processed") return null;
     return rankPlayers({
       players,
       draftedPlayerIds: state.draftedPlayerIds,
@@ -76,15 +79,20 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
       draftPicks: state.picks,
       leagueConfig: config,
       newPlayerInputs,
-    }).topRecommendations;
-  }, [config, currentInfo, dataSource, myRoster, newPlayerInputs, players, state.currentOverallPick, state.draftedPlayerIds, state.picks]);
+      manualUnavailablePlayerIds: state.manualUnavailablePlayerIds,
+      positionIntent: state.positionIntent,
+      teamEcosystemEnabled: state.teamEcosystemEnabled,
+    });
+  }, [config, currentInfo, dataSource, myRoster, newPlayerInputs, players, state.currentOverallPick, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.teamEcosystemEnabled]);
+  const topDraftRecommendations = draftRecommendationResult?.topRecommendations ?? [];
 
   function selectPlayer(player: Player) {
     try {
+      const completionRisk = currentInfo?.isMyTeam && draftRecommendationResult?.recommendations.find((entry) => entry.player.id === player.id)?.candidateFeasibility.candidateKeepsRosterFeasible === false;
       draftPlayer(player.id);
       setQuery("");
       setHighlightedIndex(0);
-      setMessage(null);
+      setMessage(completionRisk ? "Pick recorded. Warning: this selection creates roster completion risk under the configured eligibility." : null);
       searchInputRef.current?.focus();
     } catch (error) {
       setMessage(
@@ -190,7 +198,7 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
         <DraftStat label="Picks until mine" value={picksUntilMine === null ? "-" : String(picksUntilMine)} />
       </div>
 
-      {currentInfo?.isMyTeam && topDraftRecommendations.length > 0 && (
+      {currentInfo?.isMyTeam && draftRecommendationResult && (
         <section className="on-clock-recommendations" aria-labelledby="on-clock-heading">
           <div className="on-clock-heading">
             <div>
@@ -199,7 +207,9 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
             </div>
             <a href="#/recommendations">View full ranking</a>
           </div>
-          <div className="on-clock-grid">
+          <PositionIntentControls urgency={draftRecommendationResult.positionNeedUrgency} filterWarning={draftRecommendationResult.filterExcludesAllFeasible} />
+          {draftRecommendationResult.positionFilterHadNoMatches && <div className="model-warning">No available players match the current {state.positionIntent.positions.join("/")} filter. Use Clear to restore all positions.</div>}
+          {topDraftRecommendations.length === 0 ? <div className="compact-empty-state"><p>No recommendation matches the current filter.</p></div> : <div className="on-clock-grid">
             {topDraftRecommendations.map((recommendation, index) => (
               <article key={recommendation.player.id}>
                 <span className="on-clock-rank">#{index + 1}</span>
@@ -220,10 +230,11 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
                   <button onClick={() => selectPlayer(recommendation.player)} type="button">
                     Draft this player
                   </button>
+                  <button onClick={() => markUnavailable(recommendation.player.id)} type="button">Mark unavailable</button>
                 </div>
               </article>
             ))}
-          </div>
+          </div>}
         </section>
       )}
 
@@ -253,18 +264,16 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
           {query.trim() && (
             <div className="search-results" role="listbox" aria-label="Matching players">
               {availablePlayers.length > 0 ? availablePlayers.map((player, index) => (
-                <button
+                <div
                   aria-selected={highlightedIndex === index}
                   className={`player-result ${highlightedIndex === index ? "highlighted" : ""}`}
                   key={player.id}
-                  onClick={() => selectPlayer(player)}
                   onMouseEnter={() => setHighlightedIndex(index)}
                   role="option"
-                  type="button"
                 >
                   <span><strong>{player.name}</strong><small>{player.nbaTeam ?? "No team"} | {player.yahooPositions.join(" / ") || "Positions pending"}</small></span>
-                  <span className="select-label">Draft</span>
-                </button>
+                  <span className="result-actions"><button onClick={() => selectPlayer(player)} type="button">Draft</button><button onClick={() => { markUnavailable(player.id); setMessage(`${player.name} marked unavailable.`); }} type="button">Unavailable</button></span>
+                </div>
               )) : <p className="no-results">No available players match "{query}".</p>}
             </div>
           )}
@@ -294,6 +303,7 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
           )}
         </section>
       </div>
+      <DraftRepair players={players} />
     </section>
   );
 }

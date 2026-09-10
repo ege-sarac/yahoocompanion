@@ -12,6 +12,8 @@
     "preview": "vite preview",
     "rank:players": "tsx scripts/rankPlayers.ts",
     "readiness:validate": "tsx scripts/validateReadiness.ts",
+    "draft:replay": "tsx scripts/replayDraft.ts",
+    "simulate:draft": "tsx scripts/simulateDraft.ts",
     "test": "vitest run",
     "test:pipeline": ".\\.venv\\Scripts\\python.exe -m unittest scripts.nba_data.test_process_nba_data",
     "test:watch": "vitest"

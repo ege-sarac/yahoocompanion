@@ -28,6 +28,8 @@ npm.cmd run newcomers:validate
 npm.cmd run injuries:validate
 npm.cmd run rank:players
 npm.cmd run readiness:validate
+npm.cmd run draft:replay -- data/manual/replay-smoke-draft.json
+npm.cmd run simulate:draft -- --runs=20 --seed=20260910
 ```
 
 ## Draft-day workflow
@@ -40,6 +42,18 @@ npm.cmd run readiness:validate
 - **Readiness** reports catalog, eligibility, newcomer, injury, config, and draft-state checks and provides full backup/restore.
 
 Reset Draft removes picks only. It does not erase League Settings, player/Yahoo overrides, newcomer inputs, or the injury snapshot. Restoring league defaults also preserves manual data. Existing localStorage keys are versioned; invalid legacy values are warned about and copied to an `:unmigrated` recovery key rather than being silently discarded.
+
+## Position Intent, feasibility, and team context
+
+The Draft and Recommendations pages expose G/F/C multi-select controls. **Normal** ignores manual intent. **Prefer** uses a capped adjustment while retaining exceptional non-matching value. **Filter** shows only matching eligibility and never silently falls back. Selecting no positions, or all three, means all positions. Intent clears after the user's completed pick by default; Settings can preserve it.
+
+The feasibility engine reuses deterministic restrictive-slot matching. It reports open G/F/C slots and `feasibilitySlack = remainingUserPicks - minimumPicksNeededForRestrictiveSlots`, then simulates every candidate. At critical slack, impossible candidates are warned and can be left out of the main Top 5; manual drafting remains allowed. UTIL and BN create no positional pressure, and unknown eligibility remains neutral.
+
+The Team Ecosystem is a conservative heuristic projection adjustment, not an official NBA usage forecast. A base pass builds scoring, creation, rebounding, rim-protection, and G/F/C-minute profiles. A second, non-recursive pass compares normalized teammate supply with league team baselines while excluding the evaluated player. Stat-specific changes are capped near ±4% for secure veterans, ±6% for uncertain veterans, and ±8% for newcomers. It does not alter draft state and is not double-counted as another recommendation bonus.
+
+Draft Repair replaces only the player on an existing pick while preserving its snake metadata. Duplicate replacements are rejected. Mark Unavailable removes a player without inventing a pick; availability can be restored. Legacy JSON missing Prompt #8 fields migrates to conservative defaults.
+
+Replay an exported draft with `npm.cmd run draft:replay -- <path-to-json>`. The deterministic simulator runs with `npm.cmd run simulate:draft`. Both are offline diagnostics and never tune production weights automatically.
 
 ## League and scoring architecture
 
@@ -105,6 +119,7 @@ Use **Readiness → Export Draft-Day Backup** before a mock or live draft. The v
 
 - LeagueConfig
 - full draft history and derived IDs
+- manual unavailable IDs, active position intent, and draft-strategy preferences
 - player/Yahoo and manual injury overrides
 - newcomer overrides
 - current injury snapshot
@@ -136,6 +151,9 @@ The master catalog unions official current-season `CommonAllPlayers` and all `Co
 - `src/engine/fantasyPoints.ts`: dynamic points scoring.
 - `src/engine/projectionModel.ts`, `newPlayerProjection.ts`: veteran/newcomer projections and ranges.
 - `src/engine/rosterAssignment.ts`, `rosterFit.ts`, `scarcity.ts`: dynamic roster construction and pool pressure.
+- `src/engine/rosterFeasibility.ts`: completion slack, candidate simulation, and urgency.
+- `src/engine/teamEcosystem.ts`: team role competition/vacuum, security, caps, and stat-channel context.
+- `src/engine/draftReplay.ts`: pure imperfect-draft replay diagnostics.
 - `src/engine/draftSignals.ts`, `recommendationEngine.ts`: runs, survival, tiers, smooth weights, and Top 5 ranking.
 - `src/engine/draftDayBackup.ts`: versioned full backup validation/serialization.
 - `scripts/validate*.ts`: offline catalog, newcomer, injury, and readiness checks.

@@ -13,9 +13,14 @@ import {
   draftPlayer as applyDraftPick,
   draftReducer,
   serializeDraftState,
+  markPlayerUnavailable,
+  replaceDraftPick,
+  restorePlayerAvailability,
+  setPositionIntent as applyPositionIntent,
+  updateDraftPreferences as applyDraftPreferences,
   validateDraftState,
 } from "../engine";
-import type { DraftState } from "../types";
+import type { DraftState, PositionIntent } from "../types";
 import { useLeagueConfig } from "./LeagueConfigContext";
 
 const STORAGE_KEY = "yahoo-companion:draft-state:v1";
@@ -28,6 +33,11 @@ interface DraftContextValue {
   exportDraft: () => string;
   importDraft: (value: unknown) => void;
   replaceDraftState: (state: DraftState, config?: import("../types").LeagueConfig) => void;
+  replacePick: (overallPick: number, playerId: string, knownPlayerIds?: ReadonlySet<string>) => void;
+  markUnavailable: (playerId: string) => void;
+  restoreAvailability: (playerId: string) => void;
+  setPositionIntent: (intent: PositionIntent) => void;
+  updatePreferences: (preferences: Partial<Pick<DraftState, "keepPositionPreferenceAfterMyPick" | "teamEcosystemEnabled" | "showTeamContextDetails">>) => void;
 }
 
 const DraftContext = createContext<DraftContextValue | null>(null);
@@ -77,6 +87,11 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   const replaceDraftState = useCallback((nextState: DraftState, targetConfig = config) => {
     dispatch({ type: "replace", state: validateDraftState(nextState, targetConfig) });
   }, [config]);
+  const replacePick = useCallback((overallPick: number, playerId: string, knownPlayerIds?: ReadonlySet<string>) => dispatch({ type: "replace", state: replaceDraftPick(state, overallPick, playerId, knownPlayerIds, config) }), [config, state]);
+  const markUnavailable = useCallback((playerId: string) => dispatch({ type: "replace", state: markPlayerUnavailable(state, playerId) }), [state]);
+  const restoreAvailability = useCallback((playerId: string) => dispatch({ type: "replace", state: restorePlayerAvailability(state, playerId) }), [state]);
+  const setPositionIntent = useCallback((intent: PositionIntent) => dispatch({ type: "replace", state: applyPositionIntent(state, intent) }), [state]);
+  const updatePreferences = useCallback((preferences: Partial<Pick<DraftState, "keepPositionPreferenceAfterMyPick" | "teamEcosystemEnabled" | "showTeamContextDetails">>) => dispatch({ type: "replace", state: applyDraftPreferences(state, preferences) }), [state]);
 
   const contextValue = useMemo(
     () => ({
@@ -87,8 +102,9 @@ export function DraftProvider({ children }: { children: ReactNode }) {
       exportDraft,
       importDraft,
       replaceDraftState,
+      replacePick, markUnavailable, restoreAvailability, setPositionIntent, updatePreferences,
     }),
-    [draftPlayer, exportDraft, importDraft, replaceDraftState, resetDraft, state, undoLastPick],
+    [draftPlayer, exportDraft, importDraft, markUnavailable, replaceDraftState, replacePick, resetDraft, restoreAvailability, setPositionIntent, state, undoLastPick, updatePreferences],
   );
 
   return (

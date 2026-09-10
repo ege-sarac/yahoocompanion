@@ -6,7 +6,7 @@ import type { LeagueConfig } from "../types";
 
 export function SettingsPage() {
   const { config, applyConfig, restoreDefaults } = useLeagueConfig();
-  const { state, resetDraft } = useDraft();
+  const { state, resetDraft, updatePreferences } = useDraft();
   const [draft, setDraft] = useState<LeagueConfig>(() => structuredClone(config));
   const [message, setMessage] = useState<string | null>(null);
   useEffect(() => setDraft(structuredClone(config)), [config]);
@@ -50,6 +50,11 @@ export function SettingsPage() {
       <SettingsGroup title="H2H points scoring">
         {(Object.keys(draft.scoring) as Array<keyof LeagueConfig["scoring"]>).map((key) => <NumberField key={key} label={key} step={0.1} value={draft.scoring[key]} onChange={(value) => setDraft((current) => ({ ...current, scoring: { ...current.scoring, [key]: value } }))} />)}
       </SettingsGroup>
+      <fieldset className="settings-group"><legend>Draft strategy</legend><div className="settings-checks">
+        <label><input checked={state.keepPositionPreferenceAfterMyPick} onChange={(event) => updatePreferences({ keepPositionPreferenceAfterMyPick: event.target.checked })} type="checkbox" /> Keep position preference after my pick</label>
+        <label><input checked={state.teamEcosystemEnabled} onChange={(event) => updatePreferences({ teamEcosystemEnabled: event.target.checked })} type="checkbox" /> Team ecosystem adjustments</label>
+        <label><input checked={state.showTeamContextDetails} onChange={(event) => updatePreferences({ showTeamContextDetails: event.target.checked })} type="checkbox" /> Show team-context details</label>
+      </div></fieldset>
       {message && <p className="form-message" role="status">{message}</p>}
       <div className="settings-actions"><button className="primary-button" type="submit">Save and apply</button><button type="button" onClick={restore}>Restore YahooCompanion defaults</button></div>
     </form>

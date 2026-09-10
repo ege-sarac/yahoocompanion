@@ -1,4 +1,6 @@
-export type { DraftPick, DraftState } from "./draft";
+export type { DraftPick, DraftState, PositionIntent, PositionIntentMode } from "./draft";
+export type { CandidateFeasibility, PositionNeedUrgency, PositionUrgencyLabel, RosterFeasibility } from "./feasibility";
+export type { PlayerRoleProfile, TeamContextSummary, TeamEcosystemResult, TeamRoleDebug } from "./teamContext";
 export type { DraftDayBackup } from "./backup";
 export type { DisplayRosterSlot, LeagueConfig, RosterSettings, RosterSlot, ScoringSettings, StoredLeagueConfig } from "./league";
 export type {

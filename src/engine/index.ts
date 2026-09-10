@@ -21,6 +21,11 @@ export {
   serializeDraftState,
   undoLastPick,
   validateDraftState,
+  markPlayerUnavailable,
+  replaceDraftPick,
+  restorePlayerAvailability,
+  setPositionIntent,
+  updateDraftPreferences,
   type CurrentDraftInfo,
   type DraftAction,
 } from "./draftState";
@@ -59,6 +64,9 @@ export {
   validatePlayerOverrides,
 } from "./playerOverrides";
 export { assignRosterSlots } from "./rosterAssignment";
+export { analyzeCandidateFeasibility, analyzeRosterFeasibility, calculatePositionNeedUrgency } from "./rosterFeasibility";
+export { buildPlayerRoleProfile, buildTeamEcosystem } from "./teamEcosystem";
+export { replayDraft, type DraftReplayResult, type DraftReplaySnapshot } from "./draftReplay";
 export { matchesPlayerName, normalizeSearchText } from "./textSearch";
 export { calculateRecentPositionRuns } from "./draftSignals";
 export {

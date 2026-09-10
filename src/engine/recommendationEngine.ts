@@ -14,6 +14,7 @@ import type {
   RecommendationContributions,
   RecommendationResult,
   YahooPosition,
+  PositionIntent,
 } from "../types";
 import { DEFAULT_LEAGUE_CONFIG } from "../config/leagueConfig";
 import { getDraftProgress } from "./draftState";
@@ -22,6 +23,9 @@ import { calculateRecentPositionRuns } from "./draftSignals";
 import { assignRosterSlots } from "./rosterAssignment";
 import { projectPlayerForRecommendations } from "./newPlayerProjection";
 import { calculateFlexibilityScore, calculateRosterFitScore, getRosterCoverage } from "./rosterFit";
+import { analyzeCandidateFeasibility, analyzeRosterFeasibility, calculatePositionNeedUrgency } from "./rosterFeasibility";
+import { buildTeamEcosystem } from "./teamEcosystem";
+import { POST_MOCK_CONFIG } from "../config/postMockConfig";
 import {
   calculatePlayerScarcityScore,
   calculatePositionScarcity,
@@ -37,6 +41,9 @@ export interface RankPlayersInput {
   leagueConfig?: LeagueConfig;
   asOfDate?: Date;
   newPlayerInputs?: readonly NewPlayerProjectionInput[];
+  manualUnavailablePlayerIds?: readonly string[];
+  positionIntent?: PositionIntent;
+  teamEcosystemEnabled?: boolean;
 }
 
 interface ProjectedCandidate {
@@ -44,6 +51,8 @@ interface ProjectedCandidate {
   metrics: ProjectionMetrics;
   newPlayerInput?: NewPlayerProjectionInput;
 }
+
+const projectionUniverseCache = new WeakMap<readonly Player[], { leagueConfig: LeagueConfig; newPlayerInputs?: readonly NewPlayerProjectionInput[]; base: ProjectedCandidate[]; ecosystem: ReturnType<typeof buildTeamEcosystem> }>();
 
 export function getRecommendationStage(
   currentRound: number,
@@ -77,14 +86,13 @@ export function getRecommendationWeightsForProgress(progress: number): Recommend
 
 export function rankPlayers(input: RankPlayersInput): RecommendationResult {
   const leagueConfig = input.leagueConfig ?? DEFAULT_LEAGUE_CONFIG;
-  const draftedIds = new Set(input.draftedPlayerIds);
-  const availablePlayers = input.players.filter(
-    (player) => !draftedIds.has(player.id),
-  );
+  const unavailableIds = new Set([...input.draftedPlayerIds, ...(input.manualUnavailablePlayerIds ?? [])]);
   const newPlayerInputById = new Map(
     (input.newPlayerInputs ?? []).map((entry) => [entry.playerId, entry]),
   );
-  const projectedCandidates: ProjectedCandidate[] = availablePlayers.flatMap(
+  const cachedUniverse = input.asOfDate === undefined ? projectionUniverseCache.get(input.players) : undefined;
+  const reusableUniverse = cachedUniverse?.leagueConfig === leagueConfig && cachedUniverse.newPlayerInputs === input.newPlayerInputs ? cachedUniverse : undefined;
+  const allProjectedCandidates: ProjectedCandidate[] = reusableUniverse?.base ?? input.players.flatMap(
     (player) => {
       const newPlayerInput = newPlayerInputById.get(player.id);
       const metrics = projectPlayerForRecommendations(
@@ -96,6 +104,15 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
       return metrics ? [{ player, metrics, newPlayerInput }] : [];
     },
   );
+  const builtEcosystem = reusableUniverse?.ecosystem ?? buildTeamEcosystem(allProjectedCandidates, leagueConfig);
+  if (!reusableUniverse && input.asOfDate === undefined) projectionUniverseCache.set(input.players, { leagueConfig, newPlayerInputs: input.newPlayerInputs, base: allProjectedCandidates, ecosystem: builtEcosystem });
+  const ecosystem = input.teamEcosystemEnabled === true
+    ? builtEcosystem
+    : { metricsByPlayerId: new Map(allProjectedCandidates.map((entry) => [entry.player.id, entry.metrics])), contextsByPlayerId: new Map(), teams: [], playersEvaluated: 0, capViolations: 0, unresolvedTeamPlayers: 0 };
+  const availablePlayers = input.players.filter((player) => !unavailableIds.has(player.id));
+  const projectedCandidates: ProjectedCandidate[] = allProjectedCandidates
+    .filter(({ player }) => !unavailableIds.has(player.id))
+    .map((entry) => ({ ...entry, metrics: ecosystem.metricsByPlayerId.get(entry.player.id) ?? entry.metrics }));
   const draftProgress = input.currentOverallPick === undefined
     ? clamp((input.currentRound - 1) / Math.max(1, leagueConfig.rounds - 1), 0, 1)
     : getDraftProgress(Math.max(0, input.currentOverallPick - 1), leagueConfig);
@@ -127,6 +144,11 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
   );
   const weights = getRecommendationWeightsForProgress(draftProgress);
   const recentRuns = calculateRecentPositionRuns(input.draftPicks ?? [], input.players);
+  const remainingUserPicks = getMyOverallPicks(leagueConfig).filter((pick) => pick >= currentOverallPick).length;
+  const rosterFeasibility = analyzeRosterFeasibility(input.myRoster, remainingUserPicks, availablePlayers, leagueConfig);
+  const positionNeedUrgency = calculatePositionNeedUrgency(rosterFeasibility, scarcityByPosition, picksUntilNextUserPick, draftProgress);
+  const positionIntent = input.positionIntent ?? { mode: "Normal", positions: [] };
+  const activeIntentPositions = positionIntent.positions.length > 0 && positionIntent.positions.length < 3 ? positionIntent.positions : [];
   const productionRank = new Map([...projectedCandidates]
     .sort((a, b) => b.metrics.projection.projectedFantasyPointsPerGame - a.metrics.projection.projectedFantasyPointsPerGame)
     .map((candidate, index) => [candidate.player.id, index + 1]));
@@ -148,6 +170,13 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
       const recentRunLabel = recentRunPressure >= 0.65 ? "Strong run" as const : recentRunPressure >= 0.3 ? "Mild run" as const : "No run" as const;
       const tier = calculateTierDropoff(player, projectedCandidates);
       const survival = calculateSurvival(productionRank.get(player.id) ?? projectedCandidates.length, picksUntilNextUserPick, scarcityScore, recentRunPressure, tier.score);
+      const candidateFeasibility = analyzeCandidateFeasibility(input.myRoster, player, remainingUserPicks, availablePlayers, leagueConfig);
+      const manualPositionMatch = activeIntentPositions.some((position) => player.yahooPositions.includes(position));
+      const automaticPositionNeedComponent = player.yahooPositions.length ? Math.max(...player.yahooPositions.map((position) => positionNeedUrgency[position].score)) * 100 : 0;
+      const rosterFeasibilityComponent = candidateFeasibility.candidateKeepsRosterFeasible ? (candidateFeasibility.candidateSlotsRelieved.length ? 100 : 55) : 0;
+      const manualPositionPriorityComponent = positionIntent.mode === "Prefer" && manualPositionMatch
+        ? Math.min(POST_MOCK_CONFIG.positionIntent.maximumPreferAdjustment, 5 + automaticPositionNeedComponent / 25)
+        : 0;
       const components: RecommendationComponents = {
         projectedValue: baseValue,
         availability:
@@ -163,10 +192,13 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         tierDropoff: tier.score,
       };
       const contributions = weightedContributions(components, weights);
-      const finalScore = Object.values(contributions).reduce(
+      const baseFinalScore = Object.values(contributions).reduce(
         (total, contribution) => total + contribution,
         0,
       );
+      const automaticAdjustment = candidateFeasibility.candidateSlotsRelieved.length * automaticPositionNeedComponent / 100 * 5;
+      const feasibilityAdjustment = candidateFeasibility.candidateKeepsRosterFeasible ? 0 : rosterFeasibility.feasibilitySlack <= 1 ? -30 : -8;
+      const finalScore = baseFinalScore + automaticAdjustment + manualPositionPriorityComponent + feasibilityAdjustment;
 
       return {
         player,
@@ -199,7 +231,18 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
           picksUntilNextUserPick,
           recentRunLabel,
           tier.explanation,
-        ),
+        ).concat(
+          !candidateFeasibility.candidateKeepsRosterFeasible ? ["Roster completion risk."] : [],
+          candidateFeasibility.candidateCriticalNeedMatch ? [`Addresses a critical ${candidateFeasibility.candidateSlotsRelieved.join("/")} need.`] : [],
+          positionIntent.mode === "Prefer" && manualPositionMatch ? [`Matches your ${activeIntentPositions.join("/")} preference.`] : [],
+          ecosystem.contextsByPlayerId.get(player.id)?.explanations ?? [],
+        ).slice(0, 4),
+        manualPositionMatch,
+        manualPositionPriorityComponent,
+        automaticPositionNeedComponent,
+        rosterFeasibilityComponent,
+        candidateFeasibility,
+        teamContextSummary: ecosystem.contextsByPlayerId.get(player.id),
       };
     })
     .sort(
@@ -210,6 +253,13 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         left.player.name.localeCompare(right.player.name),
     );
 
+  const positionFilterActive = positionIntent.mode === "Filter" && activeIntentPositions.length > 0;
+  const filteredRecommendations = positionFilterActive ? recommendations.filter((recommendation) => recommendation.manualPositionMatch) : recommendations;
+  const filterExcludesAllFeasible = positionFilterActive && filteredRecommendations.every((recommendation) => !recommendation.candidateFeasibility.candidateKeepsRosterFeasible) && recommendations.some((recommendation) => recommendation.candidateFeasibility.candidateKeepsRosterFeasible);
+  const guardedRecommendations = rosterFeasibility.feasibilitySlack <= 1
+    ? filteredRecommendations.filter((recommendation) => recommendation.candidateFeasibility.candidateKeepsRosterFeasible)
+    : filteredRecommendations;
+  const topPool = guardedRecommendations.length > 0 ? guardedRecommendations : filteredRecommendations;
   const result = {
     recommendations,
     scarcityByPosition,
@@ -221,9 +271,19 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
     missingEligibilityCount: availablePlayers.filter(
       (player) => player.yahooPositions.length === 0,
     ).length,
-    topRecommendations: recommendations.slice(0, 5),
+    topRecommendations: topPool.slice(0, 5).map((recommendation) => {
+      if (positionIntent.mode !== "Prefer" || recommendation.manualPositionMatch || !activeIntentPositions.length) return recommendation;
+      return { ...recommendation, explanations: ["Best value despite current position preference.", ...recommendation.explanations].slice(0, 4) };
+    }),
     recentRuns,
     draftProgress,
+    rosterFeasibility,
+    positionNeedUrgency,
+    positionIntent,
+    positionFilterActive,
+    positionFilterHadNoMatches: positionFilterActive && filteredRecommendations.length === 0,
+    filterExcludesAllFeasible,
+    teamEcosystemDiagnostics: { teamsBuilt: ecosystem.teams.length, playersEvaluated: ecosystem.playersEvaluated, capViolations: ecosystem.capViolations, unresolvedTeamPlayers: ecosystem.unresolvedTeamPlayers, teams: ecosystem.teams },
   };
   return result;
 }

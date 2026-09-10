@@ -10,6 +10,7 @@ import { usePlayerOverrides } from "../context/PlayerOverridesContext";
 import { useInjurySnapshot } from "../context/InjurySnapshotContext";
 import { useNewPlayerOverrides } from "../context/NewPlayerOverridesContext";
 import { useLeagueConfig } from "../context/LeagueConfigContext";
+import { useDraft } from "../context/DraftContext";
 import { INJURY_SNAPSHOT_CONFIG } from "../config/injurySnapshotConfig";
 import type { PlayerDataSource } from "../data/playerLoader";
 import {
@@ -25,6 +26,7 @@ import {
   NBA_AVAILABILITY_STATUSES,
   playerToOverride,
   projectPlayerForRecommendations,
+  buildTeamEcosystem,
 } from "../engine";
 import type {
   InjuryStatus,
@@ -38,6 +40,7 @@ import type {
   PlayerOverride,
   ProjectionMetrics,
   YahooPosition,
+  TeamContextSummary,
 } from "../types";
 
 interface PlayerDataPageProps {
@@ -56,6 +59,8 @@ interface PlayerRow {
   projectedFantasyPointsPerGame: number | null;
   historicalAvailabilityRisk: number | null;
   metrics: ProjectionMetrics | null;
+  baseMetrics: ProjectionMetrics | null;
+  teamContext?: TeamContextSummary;
 }
 
 export function PlayerDataPage({
@@ -65,6 +70,7 @@ export function PlayerDataPage({
   newPlayerInputs,
 }: PlayerDataPageProps) {
   const { config } = useLeagueConfig();
+  const { state: draftState } = useDraft();
   const { overrides, saveOverride, exportOverrides, importOverrides } =
     usePlayerOverrides();
   const { snapshot, importSnapshot, exportSnapshot } = useInjurySnapshot();
@@ -87,9 +93,8 @@ export function PlayerDataPage({
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
 
   const sortedRows = useMemo<PlayerRow[]>(
-    () =>
-      players
-        .map((player) => {
+    () => {
+      const baseRows = players.map((player) => {
           const metrics = projectPlayerForRecommendations(
             player,
             newPlayerInputs.find((input) => input.playerId === player.id),
@@ -98,11 +103,20 @@ export function PlayerDataPage({
           );
           return {
             player,
-            projectedFantasyPointsPerGame:
-              metrics?.projection.projectedFantasyPointsPerGame ?? null,
+            metrics,
+          };
+        });
+      const context = draftState.teamEcosystemEnabled ? buildTeamEcosystem(baseRows.flatMap((row) => row.metrics ? [{ player: row.player, metrics: row.metrics }] : []), config) : null;
+      return baseRows.map(({ player, metrics: baseMetrics }) => {
+          const metrics = context?.metricsByPlayerId.get(player.id) ?? baseMetrics;
+          return {
+            player,
+            projectedFantasyPointsPerGame: metrics?.projection.projectedFantasyPointsPerGame ?? null,
             historicalAvailabilityRisk:
               metrics?.historicalAvailabilityRisk ?? null,
             metrics,
+            baseMetrics,
+            teamContext: context?.contextsByPlayerId.get(player.id),
           };
         })
         .sort(
@@ -110,8 +124,9 @@ export function PlayerDataPage({
             (right.projectedFantasyPointsPerGame ?? -1) -
               (left.projectedFantasyPointsPerGame ?? -1) ||
             left.player.name.localeCompare(right.player.name),
-        ),
-    [config, newPlayerInputs, players],
+        );
+    },
+    [config, draftState.teamEcosystemEnabled, newPlayerInputs, players],
   );
   const scopedRows = useMemo(
     () => (topLimit === 0 ? sortedRows : sortedRows.slice(0, topLimit)),
@@ -602,7 +617,7 @@ export function PlayerDataPage({
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map(({ player, historicalAvailabilityRisk, projectedFantasyPointsPerGame, metrics }) => (
+              {filteredRows.map(({ player, historicalAvailabilityRisk, projectedFantasyPointsPerGame, metrics, baseMetrics, teamContext }) => (
                 <tr
                   className={activePlayerId === player.id ? "active-row" : undefined}
                   key={player.id}
@@ -691,7 +706,7 @@ export function PlayerDataPage({
                   <td>{historicalAvailabilityRisk === null ? "—" : `${Math.round(historicalAvailabilityRisk * 100)}%`}</td>
                   <td>{metrics?.projectionSource ?? "—"}</td>
                   <td>{metrics ? <>{metrics.projection.projectedMinutes.toFixed(1)}<small className="return-text">{formatRange(metrics.projection.projectedMinutesLow, metrics.projection.projectedMinutesHigh)}</small></> : "—"}</td>
-                  <td>{projectedFantasyPointsPerGame === null ? "—" : <>{projectedFantasyPointsPerGame.toFixed(1)}<small className="return-text">{formatRange(metrics?.projection.projectedFantasyPointsPerGameLow, metrics?.projection.projectedFantasyPointsPerGameHigh)}</small></>}</td>
+                  <td>{projectedFantasyPointsPerGame === null ? "—" : <>{projectedFantasyPointsPerGame.toFixed(1)}<small className="return-text">{formatRange(metrics?.projection.projectedFantasyPointsPerGameLow, metrics?.projection.projectedFantasyPointsPerGameHigh)}</small>{teamContext && Math.abs(teamContext.adjustmentPercent) >= .001 && <small className="return-text">Base {baseMetrics?.projection.projectedFantasyPointsPerGame.toFixed(1)} · Team context {teamContext.label} ({teamContext.adjustmentPercent >= 0 ? "+" : ""}{Math.round(teamContext.adjustmentPercent * 100)}%)</small>}</>}</td>
                 </tr>
               ))}
             </tbody>
