@@ -15,6 +15,11 @@ import type {
   RecommendationResult,
   YahooPosition,
   PositionIntent,
+  PlayerRoleDataSet,
+  PlayerRoleMetrics,
+  RoleContextSummary,
+  TeamDiversificationMode,
+  MarketDataSet,
 } from "../types";
 import { DEFAULT_LEAGUE_CONFIG } from "../config/leagueConfig";
 import { getDraftProgress } from "./draftState";
@@ -22,10 +27,19 @@ import { getMyOverallPicks } from "./draftOrder";
 import { calculateRecentPositionRuns } from "./draftSignals";
 import { assignRosterSlots } from "./rosterAssignment";
 import { projectPlayerForRecommendations } from "./newPlayerProjection";
-import { calculateFlexibilityScore, calculateRosterFitScore, getRosterCoverage } from "./rosterFit";
+import { calculateFlexibilityScore, calculateRosterFitScore } from "./rosterFit";
 import { analyzeCandidateFeasibility, analyzeRosterFeasibility, calculatePositionNeedUrgency } from "./rosterFeasibility";
 import { buildTeamEcosystem } from "./teamEcosystem";
 import { POST_MOCK_CONFIG } from "../config/postMockConfig";
+import { ROLE_PROJECTION_CONFIG } from "../config/roleProjectionConfig";
+import { applyRoleIntelligence } from "./roleProjection";
+import { applyDraftValueProjection } from "./draftValueProjection";
+import { reconcileTeamMinutes } from "./teamMinutesBudget";
+import { calculateReplacementLevels, calculateSeasonValue } from "./seasonValue";
+import { calculateMarketTiming } from "./marketDraft";
+import { roundEquivalentToOverallPick } from "./marketDraft";
+import { calculatePositionContextComposite } from "./positionContext";
+import { DRAFT_VALUE_CONFIG } from "../config/draftValueConfig";
 import {
   calculatePlayerScarcityScore,
   calculatePositionScarcity,
@@ -44,15 +58,20 @@ export interface RankPlayersInput {
   manualUnavailablePlayerIds?: readonly string[];
   positionIntent?: PositionIntent;
   teamEcosystemEnabled?: boolean;
+  roleData?: PlayerRoleDataSet;
+  teamDiversificationMode?: TeamDiversificationMode;
+  preferredMaxSameTeam?: number;
+  marketData?: MarketDataSet;
 }
 
 interface ProjectedCandidate {
   player: Player;
   metrics: ProjectionMetrics;
   newPlayerInput?: NewPlayerProjectionInput;
+  roleContextSummary?: RoleContextSummary;
 }
 
-const projectionUniverseCache = new WeakMap<readonly Player[], { leagueConfig: LeagueConfig; newPlayerInputs?: readonly NewPlayerProjectionInput[]; base: ProjectedCandidate[]; ecosystem: ReturnType<typeof buildTeamEcosystem> }>();
+const projectionUniverseCache = new WeakMap<readonly Player[], { leagueConfig: LeagueConfig; newPlayerInputs?: readonly NewPlayerProjectionInput[]; roleData?: PlayerRoleDataSet; base: ProjectedCandidate[]; minutes: ReturnType<typeof reconcileTeamMinutes>; ecosystem: ReturnType<typeof buildTeamEcosystem> }>();
 
 export function getRecommendationStage(
   currentRound: number,
@@ -90,8 +109,15 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
   const newPlayerInputById = new Map(
     (input.newPlayerInputs ?? []).map((entry) => [entry.playerId, entry]),
   );
+  const roleRecordById = new Map((input.roleData?.players ?? []).map((record) => [record.playerId, record]));
+  const referenceSeason = input.players.flatMap((player) => player.historicalStats.map((season) => season.season)).sort((a, b) => b.localeCompare(a))[0];
+  const latestRoleMetricsById = new Map<string, PlayerRoleMetrics>();
+  for (const record of input.roleData?.players ?? []) {
+    const latest = [...record.seasons].sort((a, b) => b.season.localeCompare(a.season))[0];
+    if (latest) latestRoleMetricsById.set(record.playerId, latest);
+  }
   const cachedUniverse = input.asOfDate === undefined ? projectionUniverseCache.get(input.players) : undefined;
-  const reusableUniverse = cachedUniverse?.leagueConfig === leagueConfig && cachedUniverse.newPlayerInputs === input.newPlayerInputs ? cachedUniverse : undefined;
+  const reusableUniverse = cachedUniverse?.leagueConfig === leagueConfig && cachedUniverse.newPlayerInputs === input.newPlayerInputs && cachedUniverse.roleData === input.roleData ? cachedUniverse : undefined;
   const allProjectedCandidates: ProjectedCandidate[] = reusableUniverse?.base ?? input.players.flatMap(
     (player) => {
       const newPlayerInput = newPlayerInputById.get(player.id);
@@ -101,14 +127,19 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         input.asOfDate,
         leagueConfig,
       );
-      return metrics ? [{ player, metrics, newPlayerInput }] : [];
+      if (!metrics) return [];
+      const roleRecord = roleRecordById.get(player.id);
+      const roleAdjusted = applyRoleIntelligence(player, metrics, roleRecord, leagueConfig);
+      return [{ player, metrics: applyDraftValueProjection(player, roleAdjusted.metrics, roleRecord, leagueConfig, referenceSeason), newPlayerInput, roleContextSummary: roleAdjusted.summary }];
     },
   );
-  const builtEcosystem = reusableUniverse?.ecosystem ?? buildTeamEcosystem(allProjectedCandidates, leagueConfig);
-  if (!reusableUniverse && input.asOfDate === undefined) projectionUniverseCache.set(input.players, { leagueConfig, newPlayerInputs: input.newPlayerInputs, base: allProjectedCandidates, ecosystem: builtEcosystem });
+  const minutesBudget = reusableUniverse?.minutes ?? reconcileTeamMinutes(allProjectedCandidates, leagueConfig);
+  const minuteAdjustedCandidates = allProjectedCandidates.map((entry) => ({ ...entry, metrics: minutesBudget.metricsByPlayerId.get(entry.player.id) ?? entry.metrics }));
+  const builtEcosystem = reusableUniverse?.ecosystem ?? buildTeamEcosystem(minuteAdjustedCandidates, leagueConfig, latestRoleMetricsById);
+  if (!reusableUniverse && input.asOfDate === undefined) projectionUniverseCache.set(input.players, { leagueConfig, newPlayerInputs: input.newPlayerInputs, roleData: input.roleData, base: allProjectedCandidates, minutes: minutesBudget, ecosystem: builtEcosystem });
   const ecosystem = input.teamEcosystemEnabled === true
     ? builtEcosystem
-    : { metricsByPlayerId: new Map(allProjectedCandidates.map((entry) => [entry.player.id, entry.metrics])), contextsByPlayerId: new Map(), teams: [], playersEvaluated: 0, capViolations: 0, unresolvedTeamPlayers: 0 };
+    : { metricsByPlayerId: new Map(minuteAdjustedCandidates.map((entry) => [entry.player.id, entry.metrics])), contextsByPlayerId: new Map(), teams: [], playersEvaluated: 0, capViolations: 0, unresolvedTeamPlayers: 0 };
   const availablePlayers = input.players.filter((player) => !unavailableIds.has(player.id));
   const projectedCandidates: ProjectedCandidate[] = allProjectedCandidates
     .filter(({ player }) => !unavailableIds.has(player.id))
@@ -129,11 +160,9 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         metrics.projection.projectedFantasyPointsPerGame,
     })), { picksUntilNextUserPick, draftProgress, remainingNeeds },
   );
-  const productionValues = projectedCandidates
-    .map(
-      ({ metrics }) => metrics.projection.projectedFantasyPointsPerGame,
-    )
-    .sort((left, right) => left - right);
+  const replacementLevels = calculateReplacementLevels(projectedCandidates.map(({ player, metrics }) => ({ player, projectedFantasyPointsPerGame: metrics.projection.projectedFantasyPointsPerGame })), leagueConfig);
+  const seasonValueById = new Map(projectedCandidates.map(({ player, metrics }) => [player.id, calculateSeasonValue(player, metrics.projection.projectedFantasyPointsPerGame, metrics.expectedGamesProjection?.expectedGames ?? metrics.projection.projectedGames, replacementLevels)]));
+  const productionValues = projectedCandidates.map(({ player }) => seasonValueById.get(player.id)!.seasonVorp).sort((left, right) => left - right);
   const lowerProductionAnchor = percentileValue(
     productionValues,
     RECOMMENDATION_CONFIG.baseValueNormalization.lowerPercentile,
@@ -142,21 +171,35 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
     productionValues,
     RECOMMENDATION_CONFIG.baseValueNormalization.upperPercentile,
   );
+  const rawProductionValues = projectedCandidates.map(({ metrics }) => metrics.projection.projectedFantasyPointsPerGame).sort((left, right) => left - right);
+  const eliteValueReference = rawProductionValues.length > 1 ? rawProductionValues[rawProductionValues.length - 2] : rawProductionValues[0] ?? 0;
   const weights = getRecommendationWeightsForProgress(draftProgress);
   const recentRuns = calculateRecentPositionRuns(input.draftPicks ?? [], input.players);
   const remainingUserPicks = getMyOverallPicks(leagueConfig).filter((pick) => pick >= currentOverallPick).length;
   const rosterFeasibility = analyzeRosterFeasibility(input.myRoster, remainingUserPicks, availablePlayers, leagueConfig);
-  const positionNeedUrgency = calculatePositionNeedUrgency(rosterFeasibility, scarcityByPosition, picksUntilNextUserPick, draftProgress);
+  const marketProfileById = new Map((input.marketData?.profiles ?? []).map((profile) => [profile.playerId, profile]));
+  const marketDepletionByPosition = Object.fromEntries((["G", "F", "C"] as YahooPosition[]).map((position) => {
+    const quality = [...projectedCandidates].filter((candidate) => candidate.player.yahooPositions.includes(position)).sort((a, b) => seasonValueById.get(b.player.id)!.seasonVorp - seasonValueById.get(a.player.id)!.seasonVorp).slice(0, Math.max(6, picksUntilNextUserPick ?? 6));
+    const timed = quality.flatMap((candidate) => { const profile = marketProfileById.get(candidate.player.id); const round = profile?.mockRoundEquivalentMedian; return round === undefined || nextUserPick === null ? [] : [roundEquivalentToOverallPick(round, leagueConfig.teamCount) < nextUserPick ? 1 : 0]; });
+    return [position, timed.length ? timed.reduce((sum, value) => sum + value, 0) / timed.length : 0];
+  })) as Record<YahooPosition, number>;
+  const positionNeedUrgency = calculatePositionNeedUrgency(rosterFeasibility, scarcityByPosition, picksUntilNextUserPick, draftProgress, marketDepletionByPosition);
   const positionIntent = input.positionIntent ?? { mode: "Normal", positions: [] };
   const activeIntentPositions = positionIntent.positions.length > 0 && positionIntent.positions.length < 3 ? positionIntent.positions : [];
   const productionRank = new Map([...projectedCandidates]
-    .sort((a, b) => b.metrics.projection.projectedFantasyPointsPerGame - a.metrics.projection.projectedFantasyPointsPerGame)
+    .sort((a, b) => seasonValueById.get(b.player.id)!.seasonVorp - seasonValueById.get(a.player.id)!.seasonVorp)
     .map((candidate, index) => [candidate.player.id, index + 1]));
+  const tierByPlayerId = calculateTierDropoffs(projectedCandidates);
+  const teamDiversificationMode = input.teamDiversificationMode ?? ROLE_PROJECTION_CONFIG.teamDiversification.defaultMode;
+  const preferredMaxSameTeam = Math.max(1, Math.floor(input.preferredMaxSameTeam ?? ROLE_PROJECTION_CONFIG.teamDiversification.preferredMax));
+  const myRosterCountByNbaTeam = new Map<string, number>();
+  for (const player of input.myRoster) if (player.nbaTeam) myRosterCountByNbaTeam.set(player.nbaTeam, (myRosterCountByNbaTeam.get(player.nbaTeam) ?? 0) + 1);
 
   const recommendations = projectedCandidates
-    .map(({ player, metrics, newPlayerInput }): PlayerRecommendation => {
+    .map(({ player, metrics, newPlayerInput, roleContextSummary }): PlayerRecommendation => {
+      const seasonValue = seasonValueById.get(player.id)!;
       const baseValue = normalizeProductionValue(
-        metrics.projection.projectedFantasyPointsPerGame,
+        seasonValue.seasonVorp,
         lowerProductionAnchor,
         upperProductionAnchor,
       );
@@ -168,26 +211,34 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
       const flexibilityScore = calculateFlexibilityScore(player);
       const recentRunPressure = player.yahooPositions.length === 0 ? 0 : Math.max(...player.yahooPositions.map((position) => recentRuns[position].runPressure));
       const recentRunLabel = recentRunPressure >= 0.65 ? "Strong run" as const : recentRunPressure >= 0.3 ? "Mild run" as const : "No run" as const;
-      const tier = calculateTierDropoff(player, projectedCandidates);
-      const survival = calculateSurvival(productionRank.get(player.id) ?? projectedCandidates.length, picksUntilNextUserPick, scarcityScore, recentRunPressure, tier.score);
-      const candidateFeasibility = analyzeCandidateFeasibility(input.myRoster, player, remainingUserPicks, availablePlayers, leagueConfig);
+      const tier = tierByPlayerId.get(player.id) ?? { score: 50, explanation: "Eligibility unknown; tier is neutral" };
+      const marketTiming = calculateMarketTiming(marketProfileById.get(player.id), leagueConfig, currentOverallPick, nextUserPick, productionRank.get(player.id) ?? projectedCandidates.length, projectedCandidates.length, input.draftPicks, player, input.players);
+      const candidateFeasibility = analyzeCandidateFeasibility(input.myRoster, player, remainingUserPicks, availablePlayers, leagueConfig, rosterFeasibility);
       const manualPositionMatch = activeIntentPositions.some((position) => player.yahooPositions.includes(position));
       const automaticPositionNeedComponent = player.yahooPositions.length ? Math.max(...player.yahooPositions.map((position) => positionNeedUrgency[position].score)) * 100 : 0;
       const rosterFeasibilityComponent = candidateFeasibility.candidateKeepsRosterFeasible ? (candidateFeasibility.candidateSlotsRelieved.length ? 100 : 55) : 0;
       const manualPositionPriorityComponent = positionIntent.mode === "Prefer" && manualPositionMatch
         ? Math.min(POST_MOCK_CONFIG.positionIntent.maximumPreferAdjustment, 5 + automaticPositionNeedComponent / 25)
         : 0;
+      const positionContextComposite = calculatePositionContextComposite({ draftProgress, feasibility: candidateFeasibility, needUrgency: automaticPositionNeedComponent, scarcity: scarcityScore, tierDropoff: tier.score, recentRun: recentRunPressure * 100, flexibility: flexibilityScore, marketDepletion: 100 - marketTiming.survivalEstimate });
+      const materialPositionReason = Math.abs(positionContextComposite.contribution) >= DRAFT_VALUE_CONFIG.positionComposite.materialReasonContribution
+        ? positionContextComposite.contribution > 0
+          ? [`Position context adds ${positionContextComposite.contribution.toFixed(1)} points within the ${positionContextComposite.cap}-point stage cap.`]
+          : [`Position context subtracts ${Math.abs(positionContextComposite.contribution).toFixed(1)} points within the ${positionContextComposite.cap}-point stage cap.`]
+        : [];
+      const expectedGamesProjection = metrics.expectedGamesProjection!;
+      const availabilityRange = expectedGamesProjection.expectedGamesHigh - expectedGamesProjection.expectedGamesLow;
+      const reliability = expectedGamesProjection.availabilityConfidence * 70 + (1 - Math.min(1, availabilityRange / DRAFT_VALUE_CONFIG.availabilityReliability.rangePenaltyGames)) * 30;
       const components: RecommendationComponents = {
         projectedValue: baseValue,
-        availability:
-          100 * (1 - metrics.combinedAvailabilityRisk),
+        availability: reliability,
         rosterFit: rosterFitScore,
         scarcity: scarcityScore,
         opportunity: metrics.opportunityScore,
         breakout: metrics.breakoutScore,
         flexibility: flexibilityScore,
         confidence: metrics.modelConfidence * 100,
-        survivalUrgency: survival.urgency,
+        survivalUrgency: marketTiming.draftNowUrgency / Math.max(1, DRAFT_VALUE_CONFIG.market.maximumUrgencyBonus) * 100,
         recentRun: recentRunPressure * Math.min(1, rosterFitScore / 65) * 100,
         tierDropoff: tier.score,
       };
@@ -196,9 +247,17 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         (total, contribution) => total + contribution,
         0,
       );
-      const automaticAdjustment = candidateFeasibility.candidateSlotsRelieved.length * automaticPositionNeedComponent / 100 * 5;
-      const feasibilityAdjustment = candidateFeasibility.candidateKeepsRosterFeasible ? 0 : rosterFeasibility.feasibilitySlack <= 1 ? -30 : -8;
-      const finalScore = baseFinalScore + automaticAdjustment + manualPositionPriorityComponent + feasibilityAdjustment;
+      const automaticAdjustment = positionContextComposite.contribution;
+      const feasibilityAdjustment = 0;
+      const sameTeamPlayersBeforePick = player.nbaTeam ? myRosterCountByNbaTeam.get(player.nbaTeam) ?? 0 : 0;
+      const sameTeamPlayersAfterPick = sameTeamPlayersBeforePick + (player.nbaTeam ? 1 : 0);
+      const eliteDiversificationEscape = baseValue >= ROLE_PROJECTION_CONFIG.teamDiversification.eliteValueEscapeBaseValue && metrics.projection.projectedFantasyPointsPerGame >= eliteValueReference + ROLE_PROJECTION_CONFIG.teamDiversification.eliteValueMinimumFpGap;
+      const excess = Math.max(0, sameTeamPlayersAfterPick - preferredMaxSameTeam);
+      const teamDiversificationComponent = teamDiversificationMode === "Off" || excess === 0 || eliteDiversificationEscape ? 0 : -(excess === 1 ? ROLE_PROJECTION_CONFIG.teamDiversification.thirdPlayerPenalty : ROLE_PROJECTION_CONFIG.teamDiversification.fourthPlayerPenalty + (excess - 2) * ROLE_PROJECTION_CONFIG.teamDiversification.additionalPlayerPenalty);
+      const teamConcentrationWarning = excess > 0 && player.nbaTeam ? eliteDiversificationEscape ? `Elite value despite ${player.nbaTeam} team concentration.` : `Would be your ${ordinal(sameTeamPlayersAfterPick)} ${player.nbaTeam} player.` : undefined;
+      const rosterRiskCount = input.myRoster.filter((rosterPlayer) => (allProjectedCandidates.find((entry) => entry.player.id === rosterPlayer.id)?.metrics.expectedGamesProjection?.expectedGames ?? 82) < DRAFT_VALUE_CONFIG.riskConcentration.highRiskExpectedGames).length;
+      const rosterRiskPenalty = expectedGamesProjection.expectedGames < DRAFT_VALUE_CONFIG.riskConcentration.highRiskExpectedGames && rosterRiskCount >= DRAFT_VALUE_CONFIG.riskConcentration.startAtCount ? Math.min(DRAFT_VALUE_CONFIG.riskConcentration.maximumPenalty, (rosterRiskCount - DRAFT_VALUE_CONFIG.riskConcentration.startAtCount + 1) * DRAFT_VALUE_CONFIG.riskConcentration.penaltyPerExtra) : 0;
+      const finalScore = baseFinalScore + automaticAdjustment + marketTiming.draftNowUrgency - marketTiming.waitValue - marketTiming.reachCost + manualPositionPriorityComponent + feasibilityAdjustment + teamDiversificationComponent - rosterRiskPenalty;
 
       return {
         player,
@@ -209,9 +268,9 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         scarcityScore,
         flexibilityScore,
         finalScore,
-        survivalEstimate: survival.estimate,
-        survivalLabel: survival.label,
-        urgencyScore: survival.urgency,
+        survivalEstimate: marketTiming.survivalEstimate,
+        survivalLabel: marketTiming.survivalLabel,
+        urgencyScore: marketTiming.draftNowUrgency,
         picksUntilNextUserPick,
         recentRunPressure,
         recentRunLabel,
@@ -219,23 +278,21 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         tierDropoffExplanation: tier.explanation,
         components,
         contributions,
-        explanations: buildExplanations(
-          player,
-          metrics,
-          baseValue,
-          rosterFitScore,
-          scarcityScore,
-          input.myRoster,
-          input.currentRound,
-          survival.label,
-          picksUntilNextUserPick,
-          recentRunLabel,
-          tier.explanation,
-        ).concat(
+        explanations: ([] as string[]).concat(
           !candidateFeasibility.candidateKeepsRosterFeasible ? ["Roster completion risk."] : [],
           candidateFeasibility.candidateCriticalNeedMatch ? [`Addresses a critical ${candidateFeasibility.candidateSlotsRelieved.join("/")} need.`] : [],
           positionIntent.mode === "Prefer" && manualPositionMatch ? [`Matches your ${activeIntentPositions.join("/")} preference.`] : [],
+          marketTiming.waitValue >= 3 ? ["Excellent value, but market suggests he is likely to survive your next turn."] : [],
+          marketTiming.draftNowUrgency >= 3 ? ["Market suggests he may not make it back."] : [],
+          marketTiming.valueLabel === "MODEL VALUE" || marketTiming.valueLabel === "SLEEPER" ? ["Strong model value relative to market."] : [],
+          materialPositionReason,
+          buildExplanations(player, metrics, baseValue, input.currentRound),
+          expectedGamesProjection.reasons,
+          metrics.careerStageProjection?.reasons ?? [],
+          metrics.roleAssessment?.reasons ?? [],
           ecosystem.contextsByPlayerId.get(player.id)?.explanations ?? [],
+          roleContextSummary?.roleReasons ?? [],
+          teamConcentrationWarning ? [teamConcentrationWarning] : [],
         ).slice(0, 4),
         manualPositionMatch,
         manualPositionPriorityComponent,
@@ -243,6 +300,22 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         rosterFeasibilityComponent,
         candidateFeasibility,
         teamContextSummary: ecosystem.contextsByPlayerId.get(player.id),
+        roleContextSummary,
+        sameTeamPlayersBeforePick,
+        sameTeamPlayersAfterPick,
+        teamConcentrationBefore: sameTeamPlayersBeforePick,
+        teamConcentrationAfter: sameTeamPlayersAfterPick,
+        teamDiversificationComponent,
+        teamConcentrationWarning,
+        eliteDiversificationEscape,
+        expectedGamesProjection,
+        careerStageProjection: metrics.careerStageProjection!,
+        roleAssessment: metrics.roleAssessment!,
+        seasonValue,
+        marketTiming,
+        positionContextComposite,
+        modelValueRank: productionRank.get(player.id) ?? projectedCandidates.length,
+        marketCostRank: marketTiming.marketCostRank,
       };
     })
     .sort(
@@ -259,7 +332,13 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
   const guardedRecommendations = rosterFeasibility.feasibilitySlack <= 1
     ? filteredRecommendations.filter((recommendation) => recommendation.candidateFeasibility.candidateKeepsRosterFeasible)
     : filteredRecommendations;
-  const topPool = guardedRecommendations.length > 0 ? guardedRecommendations : filteredRecommendations;
+  const feasiblePool = guardedRecommendations.length > 0 ? guardedRecommendations : filteredRecommendations;
+  const diversificationAllowed = feasiblePool.filter((recommendation) => {
+    if (teamDiversificationMode === "Off" || recommendation.sameTeamPlayersAfterPick <= preferredMaxSameTeam || recommendation.eliteDiversificationEscape || recommendation.candidateFeasibility.candidateCriticalNeedMatch) return true;
+    if (teamDiversificationMode === "Strict") return false;
+    return recommendation.sameTeamPlayersAfterPick < preferredMaxSameTeam + 2;
+  });
+  const topPool = diversificationAllowed.length >= Math.min(ROLE_PROJECTION_CONFIG.teamDiversification.minimumReasonableAlternatives, feasiblePool.length) ? diversificationAllowed : feasiblePool;
   const result = {
     recommendations,
     scarcityByPosition,
@@ -284,9 +363,18 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
     positionFilterHadNoMatches: positionFilterActive && filteredRecommendations.length === 0,
     filterExcludesAllFeasible,
     teamEcosystemDiagnostics: { teamsBuilt: ecosystem.teams.length, playersEvaluated: ecosystem.playersEvaluated, capViolations: ecosystem.capViolations, unresolvedTeamPlayers: ecosystem.unresolvedTeamPlayers, teams: ecosystem.teams },
+    teamDiversificationMode,
+    preferredMaxSameTeam,
+    teamDiversificationFilteredCount: Math.max(0, feasiblePool.length - diversificationAllowed.length),
+    replacementLevels,
+    marketProfilesLoaded: input.marketData?.profiles.length ?? 0,
+    matchingMarketProfiles: projectedCandidates.filter((candidate) => marketProfileById.has(candidate.player.id)).length,
+    teamMinutesDiagnostics: { teamsProcessed: minutesBudget.teams.length, teamsOutsideTolerance: minutesBudget.teams.filter((team) => team.outsideTolerance).length, capViolations: minutesBudget.capViolations, maximumTotalMinutes: Math.max(0, ...minutesBudget.teams.map((team) => team.after)) },
   };
   return result;
 }
+
+function ordinal(value: number): string { const remainder = value % 100; const suffix = remainder >= 11 && remainder <= 13 ? "th" : value % 10 === 1 ? "st" : value % 10 === 2 ? "nd" : value % 10 === 3 ? "rd" : "th"; return `${value}${suffix}`; }
 
 function weightedContributions(
   components: RecommendationComponents,
@@ -337,14 +425,7 @@ function buildExplanations(
   player: Player,
   metrics: ProjectionMetrics,
   baseValue: number,
-  rosterFitScore: number,
-  scarcityScore: number,
-  myRoster: readonly Player[],
   currentRound: number,
-  survivalLabel: string,
-  picksUntilNext: number | null,
-  recentRunLabel: string,
-  tierExplanation: string,
 ): string[] {
   const explanations: string[] = [];
   if (metrics.newPlayerDetails) {
@@ -376,7 +457,7 @@ function buildExplanations(
     }
   }
   if (baseValue >= 90) {
-    explanations.push("Best raw production tier available.");
+    explanations.push("Best risk-adjusted season value available.");
   }
   if (player.injuryStatus === "Returning soon") {
     explanations.push(
@@ -392,17 +473,6 @@ function buildExplanations(
         : `Currently ${player.injuryStatus.toLowerCase()}; the return timeline is uncertain.`,
     );
   }
-  if (rosterFitScore >= 66 && player.yahooPositions.length > 0) {
-    const neededPosition = mostNeededEligiblePosition(player, myRoster);
-    if (neededPosition) {
-      explanations.push(
-        `Model favors the current ${neededPosition} coverage need.`,
-      );
-    }
-  }
-  if (recentRunLabel !== "No run" && player.yahooPositions.length > 0) explanations.push(`${recentRunLabel} at an eligible position.`);
-  if (picksUntilNext !== null) explanations.push(`${survivalLabel} over ${picksUntilNext} intervening picks.`);
-  if (tierExplanation.startsWith("Large")) explanations.push(tierExplanation);
   if (player.yahooPositions.length >= 2) {
     explanations.push("Multi-position eligibility adds flexibility.");
   }
@@ -418,9 +488,6 @@ function buildExplanations(
   if (metrics.historicalAvailabilityRisk >= 0.42) {
     explanations.push("Historical availability risk is elevated.");
   }
-  if (scarcityScore >= 68 && player.yahooPositions.length > 0) {
-    explanations.push("The eligible position pool is estimated to be thinning.");
-  }
   if (metrics.modelConfidence < 0.58) {
     explanations.push(
       "Projection confidence is lower because the historical sample is limited.",
@@ -432,44 +499,26 @@ function buildExplanations(
     );
   }
 
-  return explanations.slice(0, 3);
+  return explanations;
 }
 
-function calculateSurvival(rank: number, picksUntil: number | null, scarcity: number, run: number, tier: number): { estimate: number; urgency: number; label: string } {
-  if (picksUntil === null) return { estimate: 0, urgency: 0, label: "No later user pick" };
-  const scale = Math.max(2, picksUntil * 0.35);
-  const base = 100 / (1 + Math.exp(-(rank - picksUntil - 1) / scale));
-  const estimate = clamp(base - Math.max(0, scarcity - 50) * 0.18 - run * 8 - tier * 0.06, 0, 100);
-  const label = estimate >= 80 ? "Very likely to survive" : estimate >= 60 ? "Could survive" : estimate >= 40 ? "Toss-up" : estimate >= 20 ? "Unlikely to survive" : "Very unlikely to survive";
-  return { estimate, urgency: 100 - estimate, label };
-}
-
-function calculateTierDropoff(player: Player, candidates: readonly ProjectedCandidate[]): { score: number; explanation: string } {
-  if (player.yahooPositions.length === 0) return { score: 50, explanation: "Eligibility unknown; tier is neutral" };
-  let bestGap = 0;
-  let bestPosition: YahooPosition = player.yahooPositions[0];
-  for (const position of player.yahooPositions) {
-    const pool = candidates.filter((candidate) => candidate.player.yahooPositions.includes(position))
-      .sort((a, b) => b.metrics.projection.projectedFantasyPointsPerGame - a.metrics.projection.projectedFantasyPointsPerGame);
-    const index = pool.findIndex((candidate) => candidate.player.id === player.id);
-    const later = pool[index + RECOMMENDATION_CONFIG.draftSignals.tierLookAhead];
-    const gap = index >= 0 && later ? Math.max(0, pool[index].metrics.projection.projectedFantasyPointsPerGame - later.metrics.projection.projectedFantasyPointsPerGame) : 0;
-    if (gap > bestGap) { bestGap = gap; bestPosition = position; }
-  }
-  const score = clamp(bestGap / RECOMMENDATION_CONFIG.draftSignals.meaningfulTierGapFantasyPoints * 100, 0, 100);
-  return { score, explanation: score >= 65 ? `Large ${bestPosition} drop-off behind him` : score <= 25 ? `Deep ${bestPosition} tier` : `Moderate ${bestPosition} tier drop-off` };
-}
-
-function mostNeededEligiblePosition(
-  player: Player,
-  roster: readonly Player[],
-): YahooPosition | null {
-  const coverage = getRosterCoverage(roster);
-  const targets = RECOMMENDATION_CONFIG.rosterFit.targetCoverage;
-  return (
-    [...player.yahooPositions].sort(
-      (left, right) =>
-        targets[right] - coverage[right] - (targets[left] - coverage[left]),
-    )[0] ?? null
-  );
+function calculateTierDropoffs(candidates: readonly ProjectedCandidate[]): Map<string, { score: number; explanation: string }> {
+  const pools = Object.fromEntries((["G", "F", "C"] as YahooPosition[]).map((position) => [position, candidates
+    .filter((candidate) => candidate.player.yahooPositions.includes(position))
+    .sort((a, b) => b.metrics.projection.projectedFantasyPointsPerGame - a.metrics.projection.projectedFantasyPointsPerGame)])) as Record<YahooPosition, ProjectedCandidate[]>;
+  const indexes = Object.fromEntries((["G", "F", "C"] as YahooPosition[]).map((position) => [position, new Map(pools[position].map((candidate, index) => [candidate.player.id, index]))])) as Record<YahooPosition, Map<string, number>>;
+  return new Map(candidates.map((candidate) => {
+    const player = candidate.player;
+    if (player.yahooPositions.length === 0) return [player.id, { score: 50, explanation: "Eligibility unknown; tier is neutral" }];
+    let bestGap = 0;
+    let bestPosition: YahooPosition = player.yahooPositions[0];
+    for (const position of player.yahooPositions) {
+      const index = indexes[position].get(player.id) ?? -1;
+      const later = pools[position][index + RECOMMENDATION_CONFIG.draftSignals.tierLookAhead];
+      const gap = index >= 0 && later ? Math.max(0, candidate.metrics.projection.projectedFantasyPointsPerGame - later.metrics.projection.projectedFantasyPointsPerGame) : 0;
+      if (gap > bestGap) { bestGap = gap; bestPosition = position; }
+    }
+    const score = clamp(bestGap / RECOMMENDATION_CONFIG.draftSignals.meaningfulTierGapFantasyPoints * 100, 0, 100);
+    return [player.id, { score, explanation: score >= 65 ? `Large ${bestPosition} drop-off behind him` : score <= 25 ? `Deep ${bestPosition} tier` : `Moderate ${bestPosition} tier drop-off` }];
+  }));
 }

@@ -3,11 +3,15 @@ import type { ProjectionMetrics } from "./recommendation";
 export interface PlayerRoleProfile {
   usageRoleScore: number;
   creationRoleScore: number;
+  ballDominanceRoleScore: number;
   reboundingRoleScore: number;
   rimProtectionRoleScore: number;
   guardMinutesRoleScore: number;
   forwardMinutesRoleScore: number;
   centerMinutesRoleScore: number;
+  expectedUsagePct?: number;
+  pace?: number;
+  source: "measured" | "derived proxy" | "projection heuristic";
 }
 
 export interface TeamRoleDebug {
@@ -17,6 +21,16 @@ export interface TeamRoleDebug {
   supply: PlayerRoleProfile;
   vacuums: PlayerRoleProfile;
   congestion: PlayerRoleProfile;
+  teamUsageLoadBefore: number;
+  teamUsageLoadAfter: number;
+  creationCongestion: number;
+  creationVacuum: number;
+  frontcourtCongestion: number;
+  frontcourtVacuum: number;
+  projectedPace: number;
+  projectedMinutesBefore?: number;
+  projectedMinutesAfter?: number;
+  minuteBudgetOutsideTolerance?: boolean;
 }
 
 export interface TeamContextSummary {
@@ -35,6 +49,13 @@ export interface TeamContextSummary {
   adjustedFantasyPointsPerGame: number;
   explanations: string[];
   roleProfile: PlayerRoleProfile;
+  teamUsageLoad: number;
+  teamUsageAdjustment: number;
+  paceAdjustment: number;
+  maximumStatAdjustmentPercent: number;
+  skillConfidence?: number;
+  currentRoleSecurity?: number;
+  minuteBudgetAdjustmentPercent?: number;
 }
 
 export interface TeamEcosystemResult {

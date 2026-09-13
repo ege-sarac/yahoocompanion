@@ -425,6 +425,14 @@ main {
   line-height: 1.45;
 }
 
+.on-clock-reasons span {
+  display: block;
+}
+
+.on-clock-reasons span + span {
+  margin-top: 4px;
+}
+
 .on-clock-rank {
   position: absolute;
   top: 14px;
@@ -671,6 +679,16 @@ main {
   flex-wrap: wrap;
   gap: 7px;
   margin-bottom: 16px;
+}
+
+.team-exposure {
+  flex-wrap: wrap;
+}
+
+.team-exposure .exposure-over {
+  border-color: #f0a66f;
+  background: #3b271f;
+  color: #ffd3b5;
 }
 
 .roster-warnings span {
@@ -1718,15 +1736,20 @@ main {
   .newcomer-projection-summary { grid-template-columns: 1fr; }
 }
 .position-intent { margin: 1rem 0; padding: .85rem; border: 1px solid var(--border, #d7dde7); border-radius: .75rem; background: rgba(255,255,255,.55); display: grid; gap: .65rem; }
+.live-draft-strategy .position-intent { margin-bottom: .65rem; }
+.position-intent.compact { grid-template-columns: minmax(18rem, 1fr) minmax(20rem, 1fr); align-items: center; padding: .65rem .8rem; gap: .45rem 1rem; }
+.position-intent.compact .urgency-row { grid-column: 1 / -1; }
 .position-control-row, .urgency-row { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; }
 .position-control-row strong, .position-control-row > span, .urgency-row > span:first-child { min-width: 7rem; }
 .position-control-row button { min-width: 2.6rem; padding: .4rem .65rem; }
 .position-control-row button.active { background: #153f70; color: white; border-color: #153f70; }
+.selected-mark { margin-left: .3rem; font-size: .75em; font-weight: 900; }
 .position-control-row .clear-intent { margin-left: .25rem; min-width: auto; }
-.urgency-chip { font-size: .72rem; font-weight: 800; padding: .28rem .45rem; border-radius: 999px; background: #e8edf4; }
+.urgency-chip { font-size: .72rem; font-weight: 800; padding: .28rem .45rem; border-radius: 999px; background: #edf1f5; border: 1px solid #cbd3dd; color: #384554; }
 .urgency-chip.moderate { background: #fff1bd; color: #6d4d00; }
-.urgency-chip.high, .urgency-chip.critical { background: #ffe0dc; color: #8a2217; }
-.urgency-chip.critical { outline: 2px solid #b52f21; }
+.urgency-chip.high { background: #ffe1b8; border: 2px solid #b85c00; color: #713900; font-weight: 900; }
+.urgency-chip.critical { background: #9f261b; border: 2px solid #67130c; color: #fff; font-weight: 900; outline: 2px solid #f2b7ae; outline-offset: 1px; }
+.feasibility-inline { margin-left: auto; font-size: .78rem; color: #475569; white-space: nowrap; }
 .intent-warning { margin: 0; color: #8a2217; font-weight: 700; }
 .feasibility-summary { margin: .5rem 0 1rem; }
 .draft-repair { margin-top: 1rem; }
@@ -1742,3 +1765,9 @@ main {
 .compact-button { padding: .35rem .55rem; font-size: .75rem; }
 .settings-checks { display: grid; gap: .75rem; }
 .settings-checks label { display: flex; flex-direction: row; align-items: center; gap: .55rem; }
+@media (max-width: 760px) {
+  .position-intent.compact { grid-template-columns: 1fr; }
+  .position-intent.compact .urgency-row { grid-column: 1; }
+  .position-control-row strong, .position-control-row > span, .urgency-row > span:first-child { min-width: 100%; }
+  .feasibility-inline { margin-left: 0; white-space: normal; }
+}

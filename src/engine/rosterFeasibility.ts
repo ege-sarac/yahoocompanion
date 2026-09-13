@@ -42,14 +42,23 @@ export function analyzeCandidateFeasibility(
   remainingUserPicks: number,
   availablePlayers: readonly Player[] = [],
   config: LeagueConfig = DEFAULT_LEAGUE_CONFIG,
+  baseFeasibility?: RosterFeasibility,
 ): CandidateFeasibility {
-  const current = analyzeRosterFeasibility(roster, remainingUserPicks, availablePlayers, config);
-  const resulting = analyzeRosterFeasibility(
+  const current = baseFeasibility ?? analyzeRosterFeasibility(roster, remainingUserPicks, availablePlayers, config);
+  const candidateWasAvailable = availablePlayers.some((player) => player.id === candidate.id);
+  const candidateRosterOnly = analyzeRosterFeasibility(
     [...roster, candidate],
     Math.max(0, remainingUserPicks - 1),
-    availablePlayers.filter((player) => player.id !== candidate.id),
+    [],
     config,
   );
+  const resulting = candidateWasAvailable
+    ? {
+        ...candidateRosterOnly,
+        canCompleteRoster: current.canCompleteRoster && candidateRosterOnly.feasibilitySlack >= 0,
+        unknownEligibilityCount: Math.max(0, current.unknownEligibilityCount - (candidate.yahooPositions.length === 0 ? 1 : 0)),
+      }
+    : analyzeRosterFeasibility([...roster, candidate], Math.max(0, remainingUserPicks - 1), availablePlayers, config);
   const relieved = POSITIONS.filter((position) => resulting.restrictiveSlotsRequired[position] < current.restrictiveSlotsRequired[position]);
   return {
     candidateKeepsRosterFeasible: resulting.canCompleteRoster,
@@ -65,6 +74,7 @@ export function calculatePositionNeedUrgency(
   scarcity: Record<YahooPosition, { score: number }>,
   picksUntilNextUserPick: number | null,
   draftProgress: number,
+  marketDepletion: Partial<Record<YahooPosition, number>> = {},
 ): Record<YahooPosition, PositionNeedUrgency> {
   return Object.fromEntries(POSITIONS.map((position) => {
     const required = feasibility.restrictiveSlotsRequired[position];
@@ -72,7 +82,8 @@ export function calculatePositionNeedUrgency(
     if (required > 0) {
       const constraint = clamp(1 - feasibility.feasibilitySlack / Math.max(1, POST_MOCK_CONFIG.feasibility.modestSlack), 0, 1);
       const wait = clamp((picksUntilNextUserPick ?? 0) / 20, 0, 1);
-      score = clamp(0.12 + required * 0.14 + draftProgress * 0.2 + constraint * 0.42 + scarcity[position].score / 100 * 0.12 + wait * 0.05, 0, 1);
+      const requirementPressure = clamp(required / Math.max(1, feasibility.remainingUserPicks), 0, 1);
+      score = clamp(requirementPressure * .18 + draftProgress * .16 + constraint * .5 + scarcity[position].score / 100 * .08 * (constraint + draftProgress) + (marketDepletion[position] ?? 0) * .12 * (constraint + draftProgress) + wait * .04 * (constraint + draftProgress), 0, 1);
       if (feasibility.feasibilitySlack <= 0) score = 1;
     }
     return [position, { score, requiredSlots: required, label: urgencyLabel(score) }];

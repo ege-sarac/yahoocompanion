@@ -19,6 +19,7 @@ export {
   getPreviousMyPick,
   getPicksUntilMyNextPick,
   serializeDraftState,
+  serializeDraftExport,
   undoLastPick,
   validateDraftState,
   markPlayerUnavailable,
@@ -66,7 +67,18 @@ export {
 export { assignRosterSlots } from "./rosterAssignment";
 export { analyzeCandidateFeasibility, analyzeRosterFeasibility, calculatePositionNeedUrgency } from "./rosterFeasibility";
 export { buildPlayerRoleProfile, buildTeamEcosystem } from "./teamEcosystem";
+export { analyzeCareerStage, getCareerStage } from "./careerStage";
+export { projectExpectedGames, projectMajorInjuryComeback } from "./expectedGames";
+export { assessCurrentRole } from "./roleSecurity";
+export { reconcileTeamMinutes, type TeamMinutesBudgetResult } from "./teamMinutesBudget";
+export { calculateReplacementLevels, calculateSeasonValue, type SeasonValueCandidate } from "./seasonValue";
+export { calculateMarketTiming, createRosterFingerprint, createScoringFingerprint, learnMarketProfiles, overallPickToRoundEquivalent, parseMockDraft, roundEquivalentToOverallPick, validateMarketDataSet, validateMarketProfile } from "./marketDraft";
+export { calculatePositionContextComposite, type PositionContextInput } from "./positionContext";
+export { createDecisionSnapshot, upsertDecisionSnapshot } from "./decisionLog";
+export { applyDraftValueProjection } from "./draftValueProjection";
 export { replayDraft, type DraftReplayResult, type DraftReplaySnapshot } from "./draftReplay";
+export { analyzeLateSeasonRegime, calculateTeammateDependencies } from "./lateSeasonRegime";
+export { applyRoleIntelligence } from "./roleProjection";
 export { matchesPlayerName, normalizeSearchText } from "./textSearch";
 export { calculateRecentPositionRuns } from "./draftSignals";
 export {

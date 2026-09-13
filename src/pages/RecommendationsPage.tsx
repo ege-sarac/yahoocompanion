@@ -15,20 +15,24 @@ import type {
   NewPlayerProjectionInput,
   Player,
   RecommendationContributions,
+  PlayerRoleDataSet,
+  MarketDataSet,
 } from "../types";
 
 interface RecommendationsPageProps {
   players: Player[];
   dataSource: PlayerDataSource;
   newPlayerInputs: readonly NewPlayerProjectionInput[];
+  roleData?: PlayerRoleDataSet;
+  marketData?: MarketDataSet;
 }
 
 const CONTRIBUTION_LABELS: ReadonlyArray<{
   key: keyof RecommendationContributions;
   label: string;
 }> = [
-  { key: "projectedValue", label: "Projected value" },
-  { key: "availability", label: "Availability / risk" },
+  { key: "projectedValue", label: "Season VORP value" },
+  { key: "availability", label: "Availability reliability" },
   { key: "rosterFit", label: "Roster fit" },
   { key: "scarcity", label: "Scarcity" },
   { key: "opportunity", label: "Opportunity" },
@@ -44,6 +48,8 @@ export function RecommendationsPage({
   players,
   dataSource,
   newPlayerInputs,
+  roleData,
+  marketData,
 }: RecommendationsPageProps) {
   const { config } = useLeagueConfig();
   const { state, markUnavailable } = useDraft();
@@ -69,8 +75,12 @@ export function RecommendationsPage({
         manualUnavailablePlayerIds: state.manualUnavailablePlayerIds,
         positionIntent: state.positionIntent,
         teamEcosystemEnabled: state.teamEcosystemEnabled,
+        roleData,
+        teamDiversificationMode: state.teamDiversificationMode,
+        preferredMaxSameTeam: state.preferredMaxSameTeam,
+        marketData,
       }),
-    [config, currentRound, dataSource, myRoster, newPlayerInputs, players, state.currentOverallPick, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.teamEcosystemEnabled],
+    [config, currentRound, dataSource, marketData, myRoster, newPlayerInputs, players, roleData, state.currentOverallPick, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.preferredMaxSameTeam, state.teamDiversificationMode, state.teamEcosystemEnabled],
   );
   const topRecommendations = result.topRecommendations;
   const stage = getRecommendationStage(currentRound, config);
@@ -130,6 +140,7 @@ export function RecommendationsPage({
         <PositionIntentControls urgency={result.positionNeedUrgency} filterWarning={result.filterExcludesAllFeasible} />
         <p className="feasibility-summary">Feasibility slack: <strong>{result.rosterFeasibility.feasibilitySlack}</strong> · Restrictive picks required: <strong>{result.rosterFeasibility.minimumPicksNeededForRestrictiveSlots}</strong></p>
         {result.positionFilterHadNoMatches && <div className="model-warning">No available players match the current {state.positionIntent.positions.join("/")} filter. Clear the filter to show all players.</div>}
+        {result.positionFilterActive && result.teamDiversificationFilteredCount > 0 && <div className="model-warning">The active position filter includes {result.teamDiversificationFilteredCount} candidate(s) above the Strict team-diversification cap. They remain manually draftable; switch diversification mode or raise the cap to restore them to Top 5 consideration.</div>}
 
         {topRecommendations.length === 0 ? (
           <div className="empty-state">
@@ -144,7 +155,9 @@ export function RecommendationsPage({
                   <th>Rank / Player</th>
                   <th>Eligibility</th>
                   <th>FP/G</th>
-                  <th>Games</th>
+                  <th>Expected games</th>
+                  <th>Season value</th>
+                  <th>Market cost</th>
                   <th>MPG</th>
                   <th>History risk</th>
                   <th>Injury status</th>
@@ -228,6 +241,9 @@ export function RecommendationsPage({
                         </div>
                       </details>
                       {recommendation.teamContextSummary && state.showTeamContextDetails && <small className="team-context-inline">Team context: {recommendation.teamContextSummary.label} ({recommendation.teamContextSummary.adjustmentPercent >= 0 ? "+" : ""}{formatPercent(recommendation.teamContextSummary.adjustmentPercent)})</small>}
+                      {recommendation.roleContextSummary?.usagePctBaseline !== undefined && <small className="team-context-inline">Role: {recommendation.roleContextSummary.usagePctBaseline.toFixed(1)}% USG · {recommendation.roleContextSummary.lateSeasonRegime?.replaceAll("_", " ")} · {Math.round((recommendation.roleContextSummary.regimeConfidence ?? 0) * 100)}% confidence</small>}
+                      {recommendation.expectedGamesProjection.majorInjuryComeback && <small className="team-context-inline">Major-injury comeback · high projection uncertainty</small>}
+                      {recommendation.teamConcentrationWarning && <small className="team-context-inline">{recommendation.teamConcentrationWarning} ({recommendation.teamDiversificationComponent.toFixed(1)})</small>}
                       <button className="compact-button" onClick={() => markUnavailable(recommendation.player.id)} type="button">Mark unavailable</button>
                     </td>
                     <td>
@@ -242,7 +258,9 @@ export function RecommendationsPage({
                       )}
                       <small className="return-confidence-inline">{formatRange(recommendation.projection.projectedFantasyPointsPerGameLow, recommendation.projection.projectedFantasyPointsPerGameHigh)}</small>
                     </td>
-                    <td>{recommendation.projection.projectedGames.toFixed(1)}</td>
+                    <td>{recommendation.expectedGamesProjection.expectedGames.toFixed(1)}<small className="return-confidence-inline">{recommendation.expectedGamesProjection.expectedGamesLow.toFixed(0)}-{recommendation.expectedGamesProjection.expectedGamesHigh.toFixed(0)} · {recommendation.expectedGamesProjection.availabilityRiskLabel}</small></td>
+                    <td>{recommendation.seasonValue.availabilityAdjustedFantasyPointsEquivalent.toFixed(1)}<small className="return-confidence-inline">VORP {recommendation.seasonValue.seasonVorp.toFixed(0)} · replacement {recommendation.seasonValue.replacementFantasyPointsPerGame.toFixed(1)}</small></td>
+                    <td>{recommendation.marketTiming.marketPickEstimate === null ? "-" : `~${recommendation.marketTiming.marketPickEstimate}`}<small className="return-confidence-inline">{recommendation.marketTiming.valueLabel} · {recommendation.marketTiming.survivalSource}</small></td>
                     <td>{recommendation.projection.projectedMinutes.toFixed(1)}<small className="return-confidence-inline">{formatRange(recommendation.projection.projectedMinutesLow, recommendation.projection.projectedMinutesHigh)}</small></td>
                     <td>
                       {formatPercent(recommendation.historicalAvailabilityRisk)}
@@ -264,7 +282,7 @@ export function RecommendationsPage({
                     <td>{recommendation.breakoutScore.toFixed(1)}</td>
                     <td>{recommendation.rosterFitScore.toFixed(1)}</td>
                     <td>{recommendation.scarcityScore.toFixed(1)}</td>
-                    <td>{formatPercent(recommendation.modelConfidence)}</td>
+                    <td>{formatPercent(recommendation.roleAssessment.skillConfidence)}<small className="return-confidence-inline">role {formatPercent(recommendation.roleAssessment.currentRoleSecurity)} · {recommendation.careerStageProjection.careerTrend.replaceAll("_", " ")}</small></td>
                     <td>{Math.round(recommendation.survivalEstimate)} / 100<small className="return-confidence-inline">{recommendation.survivalLabel}{recommendation.recentRunLabel !== "No run" ? ` · ${recommendation.recentRunLabel}` : ""}</small></td>
                     <td className="final-score">
                       {recommendation.finalScore.toFixed(1)}

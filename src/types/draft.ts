@@ -17,7 +17,13 @@ export interface DraftState {
   keepPositionPreferenceAfterMyPick: boolean;
   teamEcosystemEnabled: boolean;
   showTeamContextDetails: boolean;
+  teamDiversificationMode: TeamDiversificationMode;
+  preferredMaxSameTeam: number;
+  decisionLoggingEnabled: boolean;
+  decisionLog: import("./draftValue").DraftDecisionSnapshot[];
 }
+
+export type TeamDiversificationMode = "Off" | "Strong soft cap" | "Strict";
 
 export type PositionIntentMode = "Normal" | "Prefer" | "Filter";
 

@@ -27,6 +27,7 @@ import {
   playerToOverride,
   projectPlayerForRecommendations,
   buildTeamEcosystem,
+  applyRoleIntelligence,
 } from "../engine";
 import type {
   InjuryStatus,
@@ -41,6 +42,9 @@ import type {
   ProjectionMetrics,
   YahooPosition,
   TeamContextSummary,
+  PlayerRoleDataSet,
+  RoleContextSummary,
+  PlayerRoleMetrics,
 } from "../types";
 
 interface PlayerDataPageProps {
@@ -48,6 +52,7 @@ interface PlayerDataPageProps {
   dataSource: PlayerDataSource;
   injuryReport: InjuryMatchingReport;
   newPlayerInputs: readonly NewPlayerProjectionInput[];
+  roleData?: PlayerRoleDataSet;
 }
 
 type EligibilityFilter = "all" | "missing" | "complete";
@@ -61,6 +66,7 @@ interface PlayerRow {
   metrics: ProjectionMetrics | null;
   baseMetrics: ProjectionMetrics | null;
   teamContext?: TeamContextSummary;
+  roleContext?: RoleContextSummary;
 }
 
 export function PlayerDataPage({
@@ -68,6 +74,7 @@ export function PlayerDataPage({
   dataSource,
   injuryReport,
   newPlayerInputs,
+  roleData,
 }: PlayerDataPageProps) {
   const { config } = useLeagueConfig();
   const { state: draftState } = useDraft();
@@ -94,20 +101,25 @@ export function PlayerDataPage({
 
   const sortedRows = useMemo<PlayerRow[]>(
     () => {
+      const records = new Map((roleData?.players ?? []).map((record) => [record.playerId, record]));
+      const latestRole = new Map<string, PlayerRoleMetrics>();
+      for (const record of roleData?.players ?? []) { const latest = record.seasons.slice().sort((a, b) => b.season.localeCompare(a.season))[0]; if (latest) latestRole.set(record.playerId, latest); }
       const baseRows = players.map((player) => {
-          const metrics = projectPlayerForRecommendations(
+          const projected = projectPlayerForRecommendations(
             player,
             newPlayerInputs.find((input) => input.playerId === player.id),
             undefined,
             config,
           );
+          const roleAdjusted = projected ? applyRoleIntelligence(player, projected, records.get(player.id), config) : undefined;
           return {
             player,
-            metrics,
+            metrics: roleAdjusted?.metrics ?? null,
+            roleContext: roleAdjusted?.summary,
           };
         });
-      const context = draftState.teamEcosystemEnabled ? buildTeamEcosystem(baseRows.flatMap((row) => row.metrics ? [{ player: row.player, metrics: row.metrics }] : []), config) : null;
-      return baseRows.map(({ player, metrics: baseMetrics }) => {
+      const context = draftState.teamEcosystemEnabled ? buildTeamEcosystem(baseRows.flatMap((row) => row.metrics ? [{ player: row.player, metrics: row.metrics }] : []), config, latestRole) : null;
+      return baseRows.map(({ player, metrics: baseMetrics, roleContext }) => {
           const metrics = context?.metricsByPlayerId.get(player.id) ?? baseMetrics;
           return {
             player,
@@ -117,6 +129,7 @@ export function PlayerDataPage({
             metrics,
             baseMetrics,
             teamContext: context?.contextsByPlayerId.get(player.id),
+            roleContext,
           };
         })
         .sort(
@@ -126,7 +139,7 @@ export function PlayerDataPage({
             left.player.name.localeCompare(right.player.name),
         );
     },
-    [config, draftState.teamEcosystemEnabled, newPlayerInputs, players],
+    [config, draftState.teamEcosystemEnabled, newPlayerInputs, players, roleData],
   );
   const scopedRows = useMemo(
     () => (topLimit === 0 ? sortedRows : sortedRows.slice(0, topLimit)),
@@ -617,7 +630,7 @@ export function PlayerDataPage({
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map(({ player, historicalAvailabilityRisk, projectedFantasyPointsPerGame, metrics, baseMetrics, teamContext }) => (
+              {filteredRows.map(({ player, historicalAvailabilityRisk, projectedFantasyPointsPerGame, metrics, teamContext, roleContext }) => (
                 <tr
                   className={activePlayerId === player.id ? "active-row" : undefined}
                   key={player.id}
@@ -706,7 +719,7 @@ export function PlayerDataPage({
                   <td>{historicalAvailabilityRisk === null ? "—" : `${Math.round(historicalAvailabilityRisk * 100)}%`}</td>
                   <td>{metrics?.projectionSource ?? "—"}</td>
                   <td>{metrics ? <>{metrics.projection.projectedMinutes.toFixed(1)}<small className="return-text">{formatRange(metrics.projection.projectedMinutesLow, metrics.projection.projectedMinutesHigh)}</small></> : "—"}</td>
-                  <td>{projectedFantasyPointsPerGame === null ? "—" : <>{projectedFantasyPointsPerGame.toFixed(1)}<small className="return-text">{formatRange(metrics?.projection.projectedFantasyPointsPerGameLow, metrics?.projection.projectedFantasyPointsPerGameHigh)}</small>{teamContext && Math.abs(teamContext.adjustmentPercent) >= .001 && <small className="return-text">Base {baseMetrics?.projection.projectedFantasyPointsPerGame.toFixed(1)} · Team context {teamContext.label} ({teamContext.adjustmentPercent >= 0 ? "+" : ""}{Math.round(teamContext.adjustmentPercent * 100)}%)</small>}</>}</td>
+                  <td>{projectedFantasyPointsPerGame === null ? "—" : <>{projectedFantasyPointsPerGame.toFixed(1)}<small className="return-text">{formatRange(metrics?.projection.projectedFantasyPointsPerGameLow, metrics?.projection.projectedFantasyPointsPerGameHigh)}</small>{roleContext?.usagePctBaseline !== undefined && <small className="return-text">USG {roleContext.usagePctBaseline.toFixed(1)}% · {roleContext.lateSeasonRegime?.replaceAll("_", " ")}</small>}{roleContext && Math.abs(roleContext.adjustmentPercent) >= .001 && <small className="return-text">Role {roleContext.adjustmentPercent >= 0 ? "+" : ""}{Math.round(roleContext.adjustmentPercent * 100)}% · confidence {Math.round((roleContext.regimeConfidence ?? 0) * 100)}%</small>}{teamContext && Math.abs(teamContext.adjustmentPercent) >= .001 && <small className="return-text">Team context {teamContext.label} ({teamContext.adjustmentPercent >= 0 ? "+" : ""}{Math.round(teamContext.adjustmentPercent * 100)}%) · usage load {teamContext.teamUsageLoad.toFixed(2)}</small>}</>}</td>
                 </tr>
               ))}
             </tbody>

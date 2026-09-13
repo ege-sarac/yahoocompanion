@@ -1,48 +1,39 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { rankPlayers } from "../src/engine/recommendationEngine";
-import { validateNewPlayerOverrides } from "../src/engine/newPlayerOverrides";
-import { applyNbaPositionFallbacks, mergePlayerOverrides, validatePlayerOverrides } from "../src/engine/playerOverrides";
-import type { Player } from "../src/types";
-
-const playerDataPath = resolve("data", "processed", "players.json");
-const newPlayerOverridesPath = resolve("data", "manual", "newPlayerOverrides.json");
-const playerOverridesPath = resolve("data", "manual", "playerOverrides.json");
+import { readRoleData } from "./roleDataUtils";
+import { readMarketData } from "./marketUtils";
+import { readCalibratedInputs } from "./draftValueDataUtils";
 
 try {
-  const parsed = JSON.parse(readFileSync(playerDataPath, "utf8")) as unknown;
-  if (!Array.isArray(parsed) || parsed.length === 0 || !parsed.every(isPlayer)) {
-    throw new Error(`${playerDataPath} is empty or malformed.`);
-  }
-  const newPlayerInputs = validateNewPlayerOverrides(
-    JSON.parse(readFileSync(newPlayerOverridesPath, "utf8")) as unknown,
-    new Set(parsed.map((player) => player.id)),
-  );
-
-  const fallbackPlayers = applyNbaPositionFallbacks(parsed);
-  const playerOverrides = existsSync(playerOverridesPath)
-    ? validatePlayerOverrides(JSON.parse(readFileSync(playerOverridesPath, "utf8")) as unknown, new Set(parsed.map((player) => player.id)))
-    : [];
-  const players = mergePlayerOverrides(fallbackPlayers, playerOverrides);
+  const { players, newPlayerInputs } = readCalibratedInputs();
+  const parsed = players;
+  const roleData = readRoleData();
+  const roleDebug = process.argv.includes("--role-debug");
   const result = rankPlayers({
     players,
     draftedPlayerIds: [],
     myRoster: [],
     currentRound: 1,
     newPlayerInputs,
+    roleData,
+    teamEcosystemEnabled: true,
+    marketData: readMarketData(),
   });
   const top15 = result.recommendations.slice(0, 15).map((recommendation, index) => ({
     Rank: index + 1,
     Name: recommendation.player.name,
     "Projected FP/G": recommendation.projection.projectedFantasyPointsPerGame.toFixed(2),
     "Projected MPG": recommendation.projection.projectedMinutes.toFixed(2),
+    "Expected GP": recommendation.expectedGamesProjection.expectedGames.toFixed(1),
+    "Season VORP": recommendation.seasonValue.seasonVorp.toFixed(1),
+    "Season equivalent": recommendation.seasonValue.availabilityAdjustedFantasyPointsEquivalent.toFixed(2),
+    "Market pick": recommendation.marketTiming.marketPickEstimate ?? "-",
     "Injury risk": recommendation.historicalAvailabilityRisk.toFixed(3),
     Opportunity: recommendation.opportunityScore.toFixed(2),
     Breakout: recommendation.breakoutScore.toFixed(2),
     Confidence: recommendation.modelConfidence.toFixed(3),
     "Final score": recommendation.finalScore.toFixed(2),
     Model: recommendation.projectionSource,
+    ...(roleDebug ? { USG: recommendation.roleContextSummary?.usagePctBaseline?.toFixed(1) ?? "-", "Role trend": recommendation.roleContextSummary?.usageChange?.toFixed(1) ?? "-", Regime: recommendation.roleContextSummary?.lateSeasonRegime ?? "fallback", "Team context": recommendation.teamContextSummary?.label ?? "-" } : {}),
   }));
 
   console.log(
@@ -69,17 +60,4 @@ try {
     error instanceof Error ? error.message : error,
   );
   process.exitCode = 1;
-}
-
-function isPlayer(value: unknown): value is Player {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const player = value as Record<string, unknown>;
-  return (
-    typeof player.id === "string" &&
-    typeof player.name === "string" &&
-    Array.isArray(player.yahooPositions) &&
-    Array.isArray(player.historicalStats)
-  );
 }

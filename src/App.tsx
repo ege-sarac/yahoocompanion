@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "./components/AppLayout";
 import type { PageId } from "./components/Navigation";
 import { usePlayerData } from "./data/playerLoader";
+import { useRoleData } from "./data/roleDataLoader";
+import { useMarketData } from "./data/marketDataLoader";
 import { usePlayerOverrides } from "./context/PlayerOverridesContext";
 import { useInjurySnapshot } from "./context/InjurySnapshotContext";
 import { useNewPlayerOverrides } from "./context/NewPlayerOverridesContext";
@@ -36,6 +38,8 @@ function pageFromHash(): PageId {
 export default function App() {
   const [activePage, setActivePage] = useState<PageId>(pageFromHash);
   const playerData = usePlayerData();
+  const roleData = useRoleData();
+  const marketData = useMarketData();
   const { overrides } = usePlayerOverrides();
   const { snapshot } = useInjurySnapshot();
   const { newPlayerOverrides } = useNewPlayerOverrides();
@@ -65,6 +69,8 @@ export default function App() {
         players={players}
         dataSource={playerData.source}
         newPlayerInputs={newPlayerOverrides}
+        roleData={roleData.data}
+        marketData={marketData.data}
       />
     ),
     recommendations: (
@@ -72,6 +78,8 @@ export default function App() {
         players={players}
         dataSource={playerData.source}
         newPlayerInputs={newPlayerOverrides}
+        roleData={roleData.data}
+        marketData={marketData.data}
       />
     ),
     roster: (
@@ -83,10 +91,11 @@ export default function App() {
         dataSource={playerData.source}
         injuryReport={injuryReport}
         newPlayerInputs={newPlayerOverrides}
+        roleData={roleData.data}
       />
     ),
     settings: <SettingsPage />,
-    readiness: <ReadinessPage players={players} injuryReport={injuryReport} />,
+    readiness: <ReadinessPage players={players} injuryReport={injuryReport} roleData={roleData.data} marketData={marketData.data} />,
   }[activePage];
 
   return <AppLayout activePage={activePage}>{page}</AppLayout>;

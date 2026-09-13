@@ -6,6 +6,7 @@ import { analyzeRosterFeasibility } from "../src/engine/rosterFeasibility";
 import { rankPlayers } from "../src/engine/recommendationEngine";
 import { applyNbaPositionFallbacks } from "../src/engine/playerOverrides";
 import type { LeagueConfig, Player, YahooPosition } from "../src/types";
+import { readRoleData } from "./roleDataUtils";
 
 const options = Object.fromEntries(process.argv.slice(2).filter((value) => value.startsWith("--")).map((value) => { const [key, raw] = value.slice(2).split("="); return [key, Number(raw)]; }));
 const runs = options.runs || 20, seed = options.seed || 20260910;
@@ -13,7 +14,8 @@ const rounds = Math.max(10, options.rounds || DEFAULT_LEAGUE_CONFIG.rounds);
 const teamCount = options.teams || DEFAULT_LEAGUE_CONFIG.teamCount;
 const config: LeagueConfig = { ...DEFAULT_LEAGUE_CONFIG, teamCount, userDraftSlot: Math.min(teamCount, options.slot || DEFAULT_LEAGUE_CONFIG.userDraftSlot), rounds, roster: { ...DEFAULT_LEAGUE_CONFIG.roster, BN: rounds - DEFAULT_LEAGUE_CONFIG.roster.G - DEFAULT_LEAGUE_CONFIG.roster.F - DEFAULT_LEAGUE_CONFIG.roster.C - DEFAULT_LEAGUE_CONFIG.roster.UTIL } };
 const players = applyNbaPositionFallbacks(JSON.parse(readFileSync(resolve("data", "processed", "players.json"), "utf8")) as Player[]);
-const initialRanking = rankPlayers({ players, draftedPlayerIds: [], myRoster: [], currentRound: 1, leagueConfig: config });
+const roleData = readRoleData();
+const initialRanking = rankPlayers({ players, draftedPlayerIds: [], myRoster: [], currentRound: 1, leagueConfig: config, roleData, teamEcosystemEnabled: true });
 const baseOrder = initialRanking.recommendations.map((entry) => entry.player);
 const fp = new Map(initialRanking.recommendations.map((entry) => [entry.player.id, entry.projection.projectedFantasyPointsPerGame]));
 let random = seeded(seed);
@@ -25,10 +27,10 @@ for (let run = 0; run < runs; run++) {
     const info = getDraftInfo(state.currentOverallPick, config)!;
     let selected: Player | undefined;
     if (info.isMyTeam) {
-      const ranking = rankPlayers({ players, draftedPlayerIds: state.draftedPlayerIds, myRoster: deriveMyRoster(state, players), currentRound: info.round, currentOverallPick: info.overallPick, draftPicks: state.picks, leagueConfig: config });
+      const ranking = rankPlayers({ players, draftedPlayerIds: state.draftedPlayerIds, myRoster: deriveMyRoster(state, players), currentRound: info.round, currentOverallPick: info.overallPick, draftPicks: state.picks, leagueConfig: config, roleData, teamEcosystemEnabled: true, teamDiversificationMode: state.teamDiversificationMode, preferredMaxSameTeam: state.preferredMaxSameTeam });
       selected = ranking.topRecommendations[0]?.player;
       const preferredPosition = (["G", "F", "C"] as YahooPosition[]).sort((a, b) => ranking.positionNeedUrgency[b].score - ranking.positionNeedUrgency[a].score)[0];
-      const preferred = rankPlayers({ players, draftedPlayerIds: state.draftedPlayerIds, myRoster: deriveMyRoster(state, players), currentRound: info.round, currentOverallPick: info.overallPick, draftPicks: state.picks, leagueConfig: config, positionIntent: { mode: "Prefer", positions: [preferredPosition] } });
+      const preferred = rankPlayers({ players, draftedPlayerIds: state.draftedPlayerIds, myRoster: deriveMyRoster(state, players), currentRound: info.round, currentOverallPick: info.overallPick, draftPicks: state.picks, leagueConfig: config, positionIntent: { mode: "Prefer", positions: [preferredPosition] }, roleData, teamEcosystemEnabled: true, teamDiversificationMode: state.teamDiversificationMode, preferredMaxSameTeam: state.preferredMaxSameTeam });
       if (preferred.topRecommendations.map((entry) => entry.player.id).join() !== ranking.topRecommendations.map((entry) => entry.player.id).join()) preferChangedTopFive++;
       if (ranking.topRecommendations[0] && ranking.topRecommendations[1] && ranking.topRecommendations[0].urgencyScore > ranking.topRecommendations[1].urgencyScore + 25 && ranking.topRecommendations[0].projection.projectedFantasyPointsPerGame + 5 < ranking.topRecommendations[1].projection.projectedFantasyPointsPerGame) survivalInferiorPicks++;
       if (Object.values(ranking.positionNeedUrgency).some((need) => need.label === "CRITICAL")) criticalPicks++;

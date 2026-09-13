@@ -54,6 +54,9 @@ export function SettingsPage() {
         <label><input checked={state.keepPositionPreferenceAfterMyPick} onChange={(event) => updatePreferences({ keepPositionPreferenceAfterMyPick: event.target.checked })} type="checkbox" /> Keep position preference after my pick</label>
         <label><input checked={state.teamEcosystemEnabled} onChange={(event) => updatePreferences({ teamEcosystemEnabled: event.target.checked })} type="checkbox" /> Team ecosystem adjustments</label>
         <label><input checked={state.showTeamContextDetails} onChange={(event) => updatePreferences({ showTeamContextDetails: event.target.checked })} type="checkbox" /> Show team-context details</label>
+        <label><input checked={state.decisionLoggingEnabled} onChange={(event) => updatePreferences({ decisionLoggingEnabled: event.target.checked })} type="checkbox" /> Include compact recommendation snapshots in future draft exports</label>
+        <label>Team diversification<select value={state.teamDiversificationMode} onChange={(event) => updatePreferences({ teamDiversificationMode: event.target.value as typeof state.teamDiversificationMode })}><option>Off</option><option>Strong soft cap</option><option>Strict</option></select></label>
+        <label>Preferred max from one NBA team<input min={1} max={15} type="number" value={state.preferredMaxSameTeam} onChange={(event) => updatePreferences({ preferredMaxSameTeam: Math.max(1, Math.min(15, Number(event.target.value) || 1)) })} /></label>
       </div></fieldset>
       {message && <p className="form-message" role="status">{message}</p>}
       <div className="settings-actions"><button className="primary-button" type="submit">Save and apply</button><button type="button" onClick={restore}>Restore YahooCompanion defaults</button></div>

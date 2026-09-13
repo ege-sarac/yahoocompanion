@@ -7,6 +7,8 @@ import type {
 import type { CandidateFeasibility, PositionNeedUrgency, RosterFeasibility } from "./feasibility";
 import type { PositionIntent } from "./draft";
 import type { TeamContextSummary, TeamRoleDebug } from "./teamContext";
+import type { RoleContextSummary } from "./role";
+import type { CareerStageProjection, CurrentRoleAssessment, ExpectedGamesProjection, MarketTimingProjection, PositionContextBreakdown, ReplacementLevelProfile, SeasonValueProjection } from "./draftValue";
 
 export interface ProjectionMetrics {
   projection: Projection;
@@ -21,6 +23,9 @@ export interface ProjectionMetrics {
   opportunityScore: number;
   breakoutScore: number;
   usedPerGameFallback: boolean;
+  expectedGamesProjection?: ExpectedGamesProjection;
+  careerStageProjection?: CareerStageProjection;
+  roleAssessment?: CurrentRoleAssessment;
 }
 
 export interface RecommendationComponents {
@@ -91,6 +96,22 @@ export interface PlayerRecommendation extends ProjectionMetrics {
   rosterFeasibilityComponent: number;
   candidateFeasibility: CandidateFeasibility;
   teamContextSummary?: TeamContextSummary;
+  roleContextSummary?: RoleContextSummary;
+  sameTeamPlayersBeforePick: number;
+  sameTeamPlayersAfterPick: number;
+  teamConcentrationBefore: number;
+  teamConcentrationAfter: number;
+  teamDiversificationComponent: number;
+  teamConcentrationWarning?: string;
+  eliteDiversificationEscape: boolean;
+  expectedGamesProjection: ExpectedGamesProjection;
+  careerStageProjection: CareerStageProjection;
+  roleAssessment: CurrentRoleAssessment;
+  seasonValue: SeasonValueProjection;
+  marketTiming: MarketTimingProjection;
+  positionContextComposite: PositionContextBreakdown;
+  modelValueRank: number;
+  marketCostRank: number | null;
 }
 
 export interface RecommendationResult {
@@ -109,4 +130,11 @@ export interface RecommendationResult {
   positionFilterHadNoMatches: boolean;
   filterExcludesAllFeasible: boolean;
   teamEcosystemDiagnostics: { teamsBuilt: number; playersEvaluated: number; capViolations: number; unresolvedTeamPlayers: number; teams: TeamRoleDebug[] };
+  teamDiversificationMode: import("./draft").TeamDiversificationMode;
+  preferredMaxSameTeam: number;
+  teamDiversificationFilteredCount: number;
+  replacementLevels: ReplacementLevelProfile;
+  marketProfilesLoaded: number;
+  matchingMarketProfiles: number;
+  teamMinutesDiagnostics: { teamsProcessed: number; teamsOutsideTolerance: number; capViolations: number; maximumTotalMinutes: number };
 }

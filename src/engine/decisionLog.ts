@@ -1,0 +1,7 @@
+import type { DraftDecisionSnapshot, PlayerRecommendation, PositionIntent } from "../types";
+
+export function createDecisionSnapshot(overallPick: number, rosterPlayerIds: readonly string[], positionIntent: PositionIntent, recommendations: readonly PlayerRecommendation[], recordedAt = new Date().toISOString()): DraftDecisionSnapshot {
+  return { overallPick, recordedAt, rosterPlayerIds: [...rosterPlayerIds], positionIntent: structuredClone(positionIntent), topFive: recommendations.slice(0, 5).map((recommendation) => ({ playerId: recommendation.player.id, draftScore: round(recommendation.finalScore), projectedFantasyPointsPerGame: round(recommendation.projection.projectedFantasyPointsPerGame), expectedGames: round(recommendation.expectedGamesProjection.expectedGames), seasonVorp: round(recommendation.seasonValue.seasonVorp), marketPickEstimate: recommendation.marketTiming.marketPickEstimate, survivalEstimate: round(recommendation.marketTiming.survivalEstimate), positionalNeed: recommendation.candidateFeasibility.candidateSlotsRelieved.join("/") || "NONE", reasons: recommendation.explanations.slice(0, 3) })) };
+}
+export function upsertDecisionSnapshot(log: readonly DraftDecisionSnapshot[], snapshot: DraftDecisionSnapshot): DraftDecisionSnapshot[] { return [...log.filter((entry) => entry.overallPick !== snapshot.overallPick), snapshot].sort((a, b) => a.overallPick - b.overallPick); }
+function round(value: number): number { return Math.round(value * 100) / 100; }

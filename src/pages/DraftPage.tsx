@@ -20,16 +20,19 @@ import {
   getPicksUntilMyNextPick,
   matchesPlayerName,
   rankPlayers,
+  createDecisionSnapshot,
 } from "../engine";
-import type { NewPlayerProjectionInput, Player } from "../types";
+import type { MarketDataSet, NewPlayerProjectionInput, Player, PlayerRoleDataSet } from "../types";
 
 interface DraftPageProps {
   players: Player[];
   dataSource: PlayerDataSource;
   newPlayerInputs: readonly NewPlayerProjectionInput[];
+  roleData?: PlayerRoleDataSet;
+  marketData?: MarketDataSet;
 }
 
-export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPageProps) {
+export function DraftPage({ players, dataSource, newPlayerInputs, roleData, marketData }: DraftPageProps) {
   const { config } = useLeagueConfig();
   const {
     state,
@@ -61,6 +64,7 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
       .slice(0, 12);
   }, [players, query, state.draftedPlayerIds, state.manualUnavailablePlayerIds]);
   const currentInfo = getDraftInfo(state.currentOverallPick, config);
+  const currentRound = currentInfo?.round ?? config.rounds;
   const nextMyPick = getNextMyPick(state.currentOverallPick, config);
   const picksUntilMine = getPicksUntilMyNextPick(state.currentOverallPick, config);
   const recentPicks = state.picks.slice(-10).reverse();
@@ -69,12 +73,12 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
     [players, state],
   );
   const draftRecommendationResult = useMemo(() => {
-    if (!currentInfo?.isMyTeam || dataSource !== "processed") return null;
+    if (dataSource !== "processed") return null;
     return rankPlayers({
       players,
       draftedPlayerIds: state.draftedPlayerIds,
       myRoster,
-      currentRound: currentInfo.round,
+      currentRound,
       currentOverallPick: state.currentOverallPick,
       draftPicks: state.picks,
       leagueConfig: config,
@@ -82,14 +86,21 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
       manualUnavailablePlayerIds: state.manualUnavailablePlayerIds,
       positionIntent: state.positionIntent,
       teamEcosystemEnabled: state.teamEcosystemEnabled,
+      roleData,
+      teamDiversificationMode: state.teamDiversificationMode,
+      preferredMaxSameTeam: state.preferredMaxSameTeam,
+      marketData,
     });
-  }, [config, currentInfo, dataSource, myRoster, newPlayerInputs, players, state.currentOverallPick, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.teamEcosystemEnabled]);
+  }, [config, currentRound, dataSource, marketData, myRoster, newPlayerInputs, players, roleData, state.currentOverallPick, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.preferredMaxSameTeam, state.teamDiversificationMode, state.teamEcosystemEnabled]);
   const topDraftRecommendations = draftRecommendationResult?.topRecommendations ?? [];
 
   function selectPlayer(player: Player) {
     try {
       const completionRisk = currentInfo?.isMyTeam && draftRecommendationResult?.recommendations.find((entry) => entry.player.id === player.id)?.candidateFeasibility.candidateKeepsRosterFeasible === false;
-      draftPlayer(player.id);
+      const decisionSnapshot = currentInfo?.isMyTeam && draftRecommendationResult && state.decisionLoggingEnabled
+        ? createDecisionSnapshot(state.currentOverallPick, state.myPlayerIds, state.positionIntent, draftRecommendationResult.topRecommendations)
+        : undefined;
+      draftPlayer(player.id, decisionSnapshot);
       setQuery("");
       setHighlightedIndex(0);
       setMessage(completionRisk ? "Pick recorded. Warning: this selection creates roster completion risk under the configured eligibility." : null);
@@ -198,17 +209,21 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
         <DraftStat label="Picks until mine" value={picksUntilMine === null ? "-" : String(picksUntilMine)} />
       </div>
 
-      {currentInfo?.isMyTeam && draftRecommendationResult && (
+      <section className="live-draft-strategy" aria-labelledby="live-strategy-heading">
+        <h3 className="visually-hidden" id="live-strategy-heading">Live draft position strategy</h3>
+        <PositionIntentControls compact urgency={draftRecommendationResult?.positionNeedUrgency} feasibility={draftRecommendationResult?.rosterFeasibility} filterWarning={draftRecommendationResult?.filterExcludesAllFeasible} />
+        {draftRecommendationResult?.positionFilterHadNoMatches && <div className="model-warning">No available players match the current {state.positionIntent.positions.join("/")} filter. Use Clear to restore all positions.</div>}
+      </section>
+
+      {draftRecommendationResult && (
         <section className="on-clock-recommendations" aria-labelledby="on-clock-heading">
           <div className="on-clock-heading">
             <div>
-              <p className="eyebrow">On the clock</p>
-              <h3 id="on-clock-heading">Top recommendations</h3>
+              <p className="eyebrow">{currentInfo?.isMyTeam ? "On the clock" : "Planning ahead"}</p>
+              <h3 id="on-clock-heading">Live Top 5</h3>
             </div>
             <a href="#/recommendations">View full ranking</a>
           </div>
-          <PositionIntentControls urgency={draftRecommendationResult.positionNeedUrgency} filterWarning={draftRecommendationResult.filterExcludesAllFeasible} />
-          {draftRecommendationResult.positionFilterHadNoMatches && <div className="model-warning">No available players match the current {state.positionIntent.positions.join("/")} filter. Use Clear to restore all positions.</div>}
           {topDraftRecommendations.length === 0 ? <div className="compact-empty-state"><p>No recommendation matches the current filter.</p></div> : <div className="on-clock-grid">
             {topDraftRecommendations.map((recommendation, index) => (
               <article key={recommendation.player.id}>
@@ -218,15 +233,18 @@ export function DraftPage({ players, dataSource, newPlayerInputs }: DraftPagePro
                   {recommendation.player.yahooPositions.join(" / ") || "Eligibility missing"}
                   {" | "}{recommendation.projection.projectedFantasyPointsPerGame.toFixed(1)} FP/G
                 </small>
-                <small>{recommendation.player.positionSource ?? "unknown"} · {recommendation.survivalLabel}</small>
-                <p>{recommendation.explanations[0] ?? "Model favors the projected value at this pick."}</p>
+                <small>Expected games {recommendation.expectedGamesProjection.expectedGames.toFixed(0)} · {recommendation.expectedGamesProjection.availabilityRiskLabel} · Season value {recommendation.seasonValue.availabilityAdjustedFantasyPointsEquivalent.toFixed(1)}</small>
+                <small>{recommendation.marketTiming.marketRoundLow === null ? "Market unavailable" : `Market R${recommendation.marketTiming.marketRoundLow.toFixed(1)}-${recommendation.marketTiming.marketRoundHigh!.toFixed(1)}`} · {recommendation.survivalLabel}</small>
+                <p className="on-clock-reasons">{(recommendation.explanations.length ? recommendation.explanations : ["Model favors the projected value at this pick."]).slice(0, 2).map((reason) => <span key={reason}>{reason}</span>)}</p>
+                {recommendation.teamConcentrationWarning && <small className="team-context-inline">{recommendation.teamConcentrationWarning}</small>}
+                {recommendation.expectedGamesProjection.majorInjuryComeback && <span className="injury-chip">Major-injury comeback · high uncertainty</span>}
                 {recommendation.player.injuryStatus !== "Healthy" && (
                   <span className="injury-chip">
                     {recommendation.player.injuryStatus ?? "Unknown injury status"}
                   </span>
                 )}
                 <div className="on-clock-card-footer">
-                  <span>Score {recommendation.finalScore.toFixed(1)}</span>
+                  <span>Draft Score {recommendation.finalScore.toFixed(1)}</span>
                   <button onClick={() => selectPlayer(recommendation.player)} type="button">
                     Draft this player
                   </button>

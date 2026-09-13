@@ -49,6 +49,7 @@ export function MyRosterPage({ players, newPlayerInputs }: MyRosterPageProps) {
   const currentRound =
     getDraftInfo(state.currentOverallPick, leagueConfig)?.round ?? leagueConfig.rounds;
   const warnings = getRosterWarnings(roster.length, coverage, currentRound, leagueConfig);
+  const teamExposure = [...roster.reduce((counts, player) => { if (player.nbaTeam) counts.set(player.nbaTeam, (counts.get(player.nbaTeam) ?? 0) + 1); return counts; }, new Map<string, number>())].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
   return (
     <section className="page" aria-labelledby="roster-heading">
@@ -80,6 +81,8 @@ export function MyRosterPage({ players, newPlayerInputs }: MyRosterPageProps) {
         <strong>{assignment.isLegal ? "Roster fits legally" : "Roster fit warning"}</strong>
         <span>{assignment.explanation}</span>
       </div>
+
+      {teamExposure.length > 0 && <div className="roster-warnings team-exposure" aria-label="NBA team exposure">{teamExposure.map(([team, count]) => <span className={count > state.preferredMaxSameTeam ? "exposure-over" : undefined} key={team}>{team} ×{count}</span>)}</div>}
 
       {warnings.length > 0 && (
         <div className="roster-warnings">
