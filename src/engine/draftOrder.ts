@@ -1,6 +1,36 @@
 import { DEFAULT_LEAGUE_CONFIG } from "../config/leagueConfig";
 import type { LeagueConfig } from "../types";
 
+/**
+ * The one authoritative view of the user's remaining snake turns.  `currentOverallPick`
+ * is the pick presently being decided/just recorded, so "next" is always strictly later.
+ */
+export interface UserPickSchedule {
+  currentUserPick: number | null;
+  nextUserPick: number | null;
+  secondNextUserPick: number | null;
+  picksUntilNextUserPick: number | null;
+  picksUntilSecondNextUserPick: number | null;
+}
+
+export function getUserPickSchedule(
+  currentOverallPick: number,
+  config: LeagueConfig = DEFAULT_LEAGUE_CONFIG,
+): UserPickSchedule {
+  const picks = getMyOverallPicks(config);
+  const currentUserPick = picks.find((pick) => pick === currentOverallPick) ?? null;
+  const nextIndex = picks.findIndex((pick) => pick > currentOverallPick);
+  const nextUserPick = nextIndex < 0 ? null : picks[nextIndex];
+  const secondNextUserPick = nextIndex < 0 ? null : picks[nextIndex + 1] ?? null;
+  return {
+    currentUserPick,
+    nextUserPick,
+    secondNextUserPick,
+    picksUntilNextUserPick: nextUserPick === null ? null : nextUserPick - currentOverallPick - 1,
+    picksUntilSecondNextUserPick: secondNextUserPick === null ? null : secondNextUserPick - currentOverallPick - 1,
+  };
+}
+
 export function getSnakeDraftTeamNumber(
   overallPick: number,
   teamCount: number,

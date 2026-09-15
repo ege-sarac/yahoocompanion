@@ -118,6 +118,21 @@ export interface PlayerRecommendation extends ProjectionMetrics {
   availabilityTailPenalty: number;
   scoreBreakdown: RecommendationScoreBreakdown;
   diagnosticInputs: { baseProjection: Projection; roleProjection: Projection; teammateDependencies: TeammateDependency[]; roleDataGeneratedAt: string | null; minutesOutsideRoleRange: boolean; marketExactPickCount: number; marketRightCensoredCount: number };
+  productionAnchor: number;
+  nonProductionStackTotal: number;
+  nonProductionStackCap: number;
+  credibleCeilingValue: number;
+  highScenarioSurplusPerGame: number;
+  endgameBlend: number;
+  promotionPathProbability: number;
+  currentDepthCompetition: number;
+  netVacatedMinutes: number;
+  rawOpportunitySignal: number;
+  rawBreakoutSignal: number;
+  rawCeilingSignal: number;
+  rawRoleSignal: number;
+  lateHoldabilityAdjustment: number;
+  dominanceWarning: boolean;
 }
 
 export interface RecommendationScoreBreakdown {
@@ -132,6 +147,11 @@ export interface RecommendationScoreBreakdown {
   teamDiversification: number;
   manualPositionIntent: number;
   rosterRisk: number;
+  productionAnchor: number;
+  credibleCeiling: number;
+  nonProductionStackPenalty: number;
+  endgameUtility: number;
+  lateHoldability: number;
   preAdjustmentScore: number;
   finalDraftScore: number;
   reconciliationResidual: number;

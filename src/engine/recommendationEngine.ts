@@ -30,7 +30,7 @@ import type {
 } from "../types";
 import { DEFAULT_LEAGUE_CONFIG } from "../config/leagueConfig";
 import { getDraftProgress } from "./draftState";
-import { getMyOverallPicks } from "./draftOrder";
+import { getMyOverallPicks, getUserPickSchedule } from "./draftOrder";
 import { calculateRecentPositionRuns } from "./draftSignals";
 import { assignRosterSlots } from "./rosterAssignment";
 import { projectPlayerForRecommendations } from "./newPlayerProjection";
@@ -85,7 +85,22 @@ interface ProjectedCandidate {
   roleRecord?: PlayerRoleHistoryRecord;
 }
 
-const projectionUniverseCache = new WeakMap<readonly Player[], { leagueConfig: LeagueConfig; newPlayerInputs?: readonly NewPlayerProjectionInput[]; roleData?: PlayerRoleDataSet; base: ProjectedCandidate[]; minutes: ReturnType<typeof reconcileTeamMinutes>; ecosystem: ReturnType<typeof buildTeamEcosystem>; replacementLevels?: ReturnType<typeof calculateReplacementLevels> }>();
+interface ProjectionUniverse {
+  leagueConfig: LeagueConfig;
+  newPlayerInputs?: readonly NewPlayerProjectionInput[];
+  roleData?: PlayerRoleDataSet;
+  base: ProjectedCandidate[];
+  minutes: ReturnType<typeof reconcileTeamMinutes>;
+  minuteAdjustedCandidates: ProjectedCandidate[];
+  ecosystem: ReturnType<typeof buildTeamEcosystem>;
+  intrinsicCandidates: ProjectedCandidate[];
+  replacementLevels: ReturnType<typeof calculateReplacementLevels>;
+  seasonValueById: Map<string, SeasonValueProjection>;
+  lowerProductionAnchor: number;
+  upperProductionAnchor: number;
+  eliteValueReference: number;
+}
+const projectionUniverseCache = new WeakMap<readonly Player[], ProjectionUniverse>();
 
 export function getRecommendationStage(
   currentRound: number,
@@ -120,37 +135,31 @@ export function getRecommendationWeightsForProgress(progress: number): Recommend
 export function rankPlayers(input: RankPlayersInput): RecommendationResult {
   const leagueConfig = input.leagueConfig ?? DEFAULT_LEAGUE_CONFIG;
   const unavailableIds = new Set([...input.draftedPlayerIds, ...(input.manualUnavailablePlayerIds ?? [])]);
-  const newPlayerInputById = new Map(
-    (input.newPlayerInputs ?? []).map((entry) => [entry.playerId, entry]),
-  );
-  const roleRecordById = new Map((input.roleData?.players ?? []).map((record) => [record.playerId, record]));
-  const referenceSeason = input.players.flatMap((player) => player.historicalStats.map((season) => season.season)).sort((a, b) => b.localeCompare(a))[0];
-  const latestRoleMetricsById = new Map<string, PlayerRoleMetrics>();
-  for (const record of input.roleData?.players ?? []) {
-    const latest = [...record.seasons].sort((a, b) => b.season.localeCompare(a.season))[0];
-    if (latest) latestRoleMetricsById.set(record.playerId, latest);
-  }
   const cachedUniverse = input.asOfDate === undefined ? projectionUniverseCache.get(input.players) : undefined;
   const reusableUniverse = cachedUniverse?.leagueConfig === leagueConfig && cachedUniverse.newPlayerInputs === input.newPlayerInputs && cachedUniverse.roleData === input.roleData ? cachedUniverse : undefined;
-  const allProjectedCandidates: ProjectedCandidate[] = reusableUniverse?.base ?? input.players.flatMap(
-    (player) => {
+  const allProjectedCandidates: ProjectedCandidate[] = reusableUniverse?.base ?? (() => {
+    const newPlayerInputById = new Map((input.newPlayerInputs ?? []).map((entry) => [entry.playerId, entry]));
+    const roleRecordById = new Map((input.roleData?.players ?? []).map((record) => [record.playerId, record]));
+    const referenceSeason = input.players.flatMap((player) => player.historicalStats.map((season) => season.season)).sort((a, b) => b.localeCompare(a))[0];
+    return input.players.flatMap((player) => {
       const newPlayerInput = newPlayerInputById.get(player.id);
-      const metrics = projectPlayerForRecommendations(
-        player,
-        newPlayerInput,
-        input.asOfDate,
-        leagueConfig,
-      );
+      const metrics = projectPlayerForRecommendations(player, newPlayerInput, input.asOfDate, leagueConfig);
       if (!metrics) return [];
       const roleRecord = roleRecordById.get(player.id);
       const roleAdjusted = applyRoleIntelligence(player, metrics, roleRecord, leagueConfig);
       return [{ player, metrics: applyDraftValueProjection(player, roleAdjusted.metrics, roleRecord, leagueConfig, referenceSeason), newPlayerInput, roleContextSummary: roleAdjusted.summary, baseProjection: metrics.projection, roleProjection: roleAdjusted.metrics.projection, roleRecord }];
-    },
-  );
+    });
+  })();
   const minutesBudget = reusableUniverse?.minutes ?? reconcileTeamMinutes(allProjectedCandidates, leagueConfig);
-  const minuteAdjustedCandidates = allProjectedCandidates.map((entry) => ({ ...entry, metrics: minutesBudget.metricsByPlayerId.get(entry.player.id) ?? entry.metrics }));
-  const builtEcosystem = reusableUniverse?.ecosystem ?? buildTeamEcosystem(minuteAdjustedCandidates, leagueConfig, latestRoleMetricsById);
-  if (!reusableUniverse && input.asOfDate === undefined) projectionUniverseCache.set(input.players, { leagueConfig, newPlayerInputs: input.newPlayerInputs, roleData: input.roleData, base: allProjectedCandidates, minutes: minutesBudget, ecosystem: builtEcosystem });
+  const minuteAdjustedCandidates = reusableUniverse?.minuteAdjustedCandidates ?? allProjectedCandidates.map((entry) => ({ ...entry, metrics: minutesBudget.metricsByPlayerId.get(entry.player.id) ?? entry.metrics }));
+  const builtEcosystem = reusableUniverse?.ecosystem ?? (() => {
+    const latestRoleMetricsById = new Map<string, PlayerRoleMetrics>();
+    for (const record of input.roleData?.players ?? []) {
+      const latest = [...record.seasons].sort((a, b) => b.season.localeCompare(a.season))[0];
+      if (latest) latestRoleMetricsById.set(record.playerId, latest);
+    }
+    return buildTeamEcosystem(minuteAdjustedCandidates, leagueConfig, latestRoleMetricsById);
+  })();
   const ecosystem = input.teamEcosystemEnabled === true
     ? builtEcosystem
     : { metricsByPlayerId: new Map(minuteAdjustedCandidates.map((entry) => [entry.player.id, entry.metrics])), contextsByPlayerId: new Map(), teams: [], playersEvaluated: 0, capViolations: 0, unresolvedTeamPlayers: 0 };
@@ -162,8 +171,9 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
     ? clamp((input.currentRound - 1) / Math.max(1, leagueConfig.rounds - 1), 0, 1)
     : getDraftProgress(Math.max(0, input.currentOverallPick - 1), leagueConfig);
   const currentOverallPick = input.currentOverallPick ?? Math.max(1, (input.currentRound - 1) * leagueConfig.teamCount + 1);
-  const nextUserPick = getMyOverallPicks(leagueConfig).find((pick) => pick > currentOverallPick) ?? null;
-  const picksUntilNextUserPick = nextUserPick === null ? null : Math.max(0, nextUserPick - currentOverallPick - 1);
+  const pickSchedule = getUserPickSchedule(currentOverallPick, leagueConfig);
+  const nextUserPick = pickSchedule.nextUserPick;
+  const picksUntilNextUserPick = pickSchedule.picksUntilNextUserPick;
   const rosterAssignment = assignRosterSlots(input.myRoster, leagueConfig);
   const remainingNeeds = { G: leagueConfig.roster.G, F: leagueConfig.roster.F, C: leagueConfig.roster.C };
   for (const entry of rosterAssignment.assignments) if (entry.slot === "G" || entry.slot === "F" || entry.slot === "C") remainingNeeds[entry.slot] = Math.max(0, remainingNeeds[entry.slot] - 1);
@@ -175,25 +185,26 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
     })), { picksUntilNextUserPick, draftProgress, remainingNeeds },
   );
   // Replacement value is an intrinsic league baseline, never a shrinking live-room baseline.
-  const intrinsicCandidates = allProjectedCandidates.map((entry) => ({ ...entry, metrics: ecosystem.metricsByPlayerId.get(entry.player.id) ?? entry.metrics }));
-  const replacementLevels = input.teamEcosystemEnabled === true && reusableUniverse?.replacementLevels
-    ? reusableUniverse.replacementLevels
-    : calculateReplacementLevels(intrinsicCandidates.map(({ player, metrics }) => ({ player, projectedFantasyPointsPerGame: metrics.projection.projectedFantasyPointsPerGame })), leagueConfig);
-  if (input.asOfDate === undefined && input.teamEcosystemEnabled === true) projectionUniverseCache.get(input.players)!.replacementLevels = replacementLevels;
-  const seasonValueById = new Map(intrinsicCandidates.map(({ player, metrics }) => [player.id, calculateSeasonValue(player, metrics.projection.projectedFantasyPointsPerGame, metrics.expectedGamesProjection?.expectedGames ?? metrics.projection.projectedGames, replacementLevels)]));
+  const intrinsicUniverse = input.teamEcosystemEnabled === true ? reusableUniverse : undefined;
+  const intrinsicCandidates = intrinsicUniverse?.intrinsicCandidates ?? allProjectedCandidates.map((entry) => ({ ...entry, metrics: ecosystem.metricsByPlayerId.get(entry.player.id) ?? entry.metrics }));
+  const replacementLevels = intrinsicUniverse?.replacementLevels ?? calculateReplacementLevels(intrinsicCandidates.map(({ player, metrics }) => ({ player, projectedFantasyPointsPerGame: metrics.projection.projectedFantasyPointsPerGame })), leagueConfig);
+  const seasonValueById = intrinsicUniverse?.seasonValueById ?? new Map(intrinsicCandidates.map(({ player, metrics }) => [player.id, calculateSeasonValue(player, metrics.projection.projectedFantasyPointsPerGame, metrics.expectedGamesProjection?.expectedGames ?? metrics.projection.projectedGames, replacementLevels)]));
   const minutesOutsideRoleRange = new Set(minutesBudget.minutesOutsideRoleRangePlayerIds);
   const roleScenarioById = new Map(projectedCandidates.map(({ player, metrics, newPlayerInput, roleContextSummary }) => [player.id, buildRoleScenarioSummary({ player, metrics, newPlayerInput, roleContextSummary, seasonValue: seasonValueById.get(player.id)!, draftProgress, minutesOutsideRoleRange: minutesOutsideRoleRange.has(player.id) })]));
-  const productionValues = projectedCandidates.map(({ player }) => roleScenarioById.get(player.id)!.meanSeasonVorp).sort((left, right) => left - right);
-  const lowerProductionAnchor = percentileValue(
-    productionValues,
+  // Intrinsic value is normalized against the full projectable universe, never the
+  // shrinking available room.  Draft progress can change timing, not player quality.
+  const productionValues = intrinsicUniverse ? undefined : intrinsicCandidates.map(({ player }) => seasonValueById.get(player.id)!.seasonVorp).sort((left, right) => left - right);
+  const lowerProductionAnchor = intrinsicUniverse?.lowerProductionAnchor ?? percentileValue(
+    productionValues!,
     RECOMMENDATION_CONFIG.baseValueNormalization.lowerPercentile,
   );
-  const upperProductionAnchor = percentileValue(
-    productionValues,
+  const upperProductionAnchor = intrinsicUniverse?.upperProductionAnchor ?? percentileValue(
+    productionValues!,
     RECOMMENDATION_CONFIG.baseValueNormalization.upperPercentile,
   );
-  const rawProductionValues = projectedCandidates.map(({ metrics }) => metrics.projection.projectedFantasyPointsPerGame).sort((left, right) => left - right);
-  const eliteValueReference = rawProductionValues.length > 1 ? rawProductionValues[rawProductionValues.length - 2] : rawProductionValues[0] ?? 0;
+  const rawProductionValues = intrinsicUniverse ? undefined : intrinsicCandidates.map(({ metrics }) => metrics.projection.projectedFantasyPointsPerGame).sort((left, right) => left - right);
+  const eliteValueReference = intrinsicUniverse?.eliteValueReference ?? (rawProductionValues!.length > 1 ? rawProductionValues![rawProductionValues!.length - 2] : rawProductionValues![0] ?? 0);
+  if (!reusableUniverse && input.asOfDate === undefined && input.teamEcosystemEnabled === true) projectionUniverseCache.set(input.players, { leagueConfig, newPlayerInputs: input.newPlayerInputs, roleData: input.roleData, base: allProjectedCandidates, minutes: minutesBudget, minuteAdjustedCandidates, ecosystem: builtEcosystem, intrinsicCandidates, replacementLevels, seasonValueById, lowerProductionAnchor, upperProductionAnchor, eliteValueReference });
   const weights = getRecommendationWeightsForProgress(draftProgress);
   const recentRuns = calculateRecentPositionRuns(input.draftPicks ?? [], input.players);
   const remainingUserPicks = getMyOverallPicks(leagueConfig).filter((pick) => pick >= currentOverallPick).length;
@@ -221,7 +232,7 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
       const seasonValue = seasonValueById.get(player.id)!;
       const roleScenarioSummary = roleScenarioById.get(player.id)!;
       const baseValue = normalizeProductionValue(
-        roleScenarioSummary.meanSeasonVorp,
+        seasonValue.seasonVorp,
         lowerProductionAnchor,
         upperProductionAnchor,
       );
@@ -254,13 +265,27 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
       const availabilityTailPenalty = calculateAvailabilityTailPenalty(availabilityDownsideGap, expectedGamesProjection, draftProgress);
       const availabilityRange = expectedGamesProjection.expectedGamesHigh - expectedGamesProjection.expectedGamesLow;
       const reliability = expectedGamesProjection.availabilityConfidence * 70 + (1 - Math.min(1, availabilityRange / DRAFT_VALUE_CONFIG.availabilityReliability.rangePenaltyGames)) * 30;
+      const teamContext = ecosystem.contextsByPlayerId.get(player.id);
+      const currentDepthCompetition = teamContext?.positionalMinuteCompetition ?? 0;
+      const netVacatedMinutes = (teamContext?.opportunityVacuum ?? 0) * 12 - currentDepthCompetition * 8;
+      const perMinuteProduction = metrics.projection.projectedMinutes > 0 ? metrics.projection.projectedFantasyPointsPerGame / metrics.projection.projectedMinutes : 0;
+      const productionBlendForOpportunity = productionBlendForDraft(draftProgress);
+      const promotionPathProbability = clamp((Math.max(0, netVacatedMinutes) / 12 * .45 + Math.max(0, roleContextSummary?.lateSeasonMinutesChange ?? 0) / 8 * .2 + clamp(perMinuteProduction / 1.15, 0, 1) * .15) * (1 - currentDepthCompetition * .55) * (.45 + roleAssessmentSecurity(metrics) * .55), 0, 1);
+      // Existing projected minutes already feed production and VORP.  This only rewards
+      // unpriced future promotion evidence, and legacy breakout fades as scenarios matter.
+      const rawOpportunitySignal = promotionPathProbability * 100;
+      const rawBreakoutSignal = metrics.breakoutScore;
+      const rawCeilingSignal = Math.max(0, (roleScenarioSummary.scenarios.find((scenario) => scenario.label === "HIGH")?.projectedFantasyPointsPerGame ?? 0) - seasonValue.replacementFantasyPointsPerGame);
+      const rawRoleSignal = roleAssessmentSecurity(metrics) * 100;
+      const opportunityScore = rawOpportunitySignal;
+      const legacyBreakoutScore = rawBreakoutSignal * (1 - productionBlendForOpportunity * .25);
       const components: RecommendationComponents = {
         projectedValue: baseValue,
         availability: reliability,
         rosterFit: rosterFitScore,
         scarcity: scarcityScore,
-        opportunity: metrics.opportunityScore,
-        breakout: metrics.breakoutScore,
+        opportunity: opportunityScore,
+        breakout: legacyBreakoutScore,
         flexibility: flexibilityScore,
         confidence: metrics.modelConfidence * 100,
         survivalUrgency: marketTiming.draftNowUrgency / Math.max(1, DRAFT_VALUE_CONFIG.market.maximumUrgencyBonus) * 100,
@@ -282,7 +307,20 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
       const teamConcentrationWarning = excess > 0 && player.nbaTeam ? eliteDiversificationEscape ? `Elite value despite ${player.nbaTeam} team concentration.` : `Would be your ${ordinal(sameTeamPlayersAfterPick)} ${player.nbaTeam} player.` : undefined;
       const rosterRiskCount = input.myRoster.filter((rosterPlayer) => (allProjectedCandidates.find((entry) => entry.player.id === rosterPlayer.id)?.metrics.expectedGamesProjection?.expectedGames ?? 82) < DRAFT_VALUE_CONFIG.riskConcentration.highRiskExpectedGames).length;
       const rosterRiskPenalty = expectedGamesProjection.expectedGames < DRAFT_VALUE_CONFIG.riskConcentration.highRiskExpectedGames && rosterRiskCount >= DRAFT_VALUE_CONFIG.riskConcentration.startAtCount ? Math.min(DRAFT_VALUE_CONFIG.riskConcentration.maximumPenalty, (rosterRiskCount - DRAFT_VALUE_CONFIG.riskConcentration.startAtCount + 1) * DRAFT_VALUE_CONFIG.riskConcentration.penaltyPerExtra) : 0;
-      const finalScore = baseFinalScore + roleScenarioSummary.optionScoreAdjustment + automaticAdjustment + marketTiming.draftNowUrgency - marketTiming.waitValue - marketTiming.liveWaitCost - marketTiming.reachCost + manualPositionPriorityComponent + feasibilityAdjustment + teamDiversificationComponent - rosterRiskPenalty - availabilityTailPenalty;
+      const baseScenario = roleScenarioSummary.scenarios.find((scenario) => scenario.label === "BASE") ?? roleScenarioSummary.scenarios[1];
+      const highScenario = roleScenarioSummary.scenarios.find((scenario) => scenario.label === "HIGH") ?? roleScenarioSummary.scenarios[2];
+      const highScenarioSurplusPerGame = Math.max(0, (highScenario?.projectedFantasyPointsPerGame ?? 0) - seasonValue.replacementFantasyPointsPerGame);
+      const credibleCeilingValue = Math.min(DRAFT_VALUE_CONFIG.productionDominance.credibleCeilingCap, highScenarioSurplusPerGame / 8 * (highScenario?.probability ?? 0) * roleScenarioSummary.roleSustainability * roleAssessmentSecurity(metrics) * (.65 + promotionPathProbability * .35));
+      const productionBlend = clamp((draftProgress - DRAFT_VALUE_CONFIG.productionDominance.startsAtProgress) / (1 - DRAFT_VALUE_CONFIG.productionDominance.startsAtProgress), 0, 1);
+      const productionAnchor = productionBlend * clamp(((baseScenario?.projectedFantasyPointsPerGame ?? metrics.projection.projectedFantasyPointsPerGame) - seasonValue.replacementFantasyPointsPerGame) / 10 * DRAFT_VALUE_CONFIG.productionDominance.maximumAnchorAdjustment, -DRAFT_VALUE_CONFIG.productionDominance.maximumAnchorAdjustment, DRAFT_VALUE_CONFIG.productionDominance.maximumAnchorAdjustment);
+       const nonProductionStackTotal = contributions.opportunity + contributions.breakout + contributions.confidence + contributions.flexibility + roleScenarioSummary.optionScoreAdjustment;
+      const nonProductionStackCap = productionBlend ? DRAFT_VALUE_CONFIG.productionDominance.nonProductionCapMiddle + (DRAFT_VALUE_CONFIG.productionDominance.nonProductionCapLate - DRAFT_VALUE_CONFIG.productionDominance.nonProductionCapMiddle) * productionBlend : Number.POSITIVE_INFINITY;
+      const nonProductionStackPenalty = Math.max(0, nonProductionStackTotal - nonProductionStackCap);
+      const roundsRemaining = leagueConfig.rounds - input.currentRound + 1;
+      const endgameBlend = clamp((DRAFT_VALUE_CONFIG.productionDominance.endgameRoundsRemaining - roundsRemaining + 1) / DRAFT_VALUE_CONFIG.productionDominance.endgameRoundsRemaining, 0, 1);
+       const lateHoldabilityAdjustment = endgameBlend * clamp(((baseScenario?.projectedFantasyPointsPerGame ?? 0) - seasonValue.replacementFantasyPointsPerGame) / 7 + credibleCeilingValue * .35 + promotionPathProbability * 1.5 - currentDepthCompetition * 1.5 - availabilityTailPenalty * .2, -3, 3);
+       const endgameUtility = endgameBlend * clamp(Math.max((baseScenario?.projectedFantasyPointsPerGame ?? 0) - seasonValue.replacementFantasyPointsPerGame, highScenarioSurplusPerGame * (highScenario?.probability ?? 0)) / 8 * 3 + lateHoldabilityAdjustment, -3, 3);
+       const finalScore = baseFinalScore + roleScenarioSummary.optionScoreAdjustment + automaticAdjustment + marketTiming.draftNowUrgency - marketTiming.waitValue - marketTiming.liveWaitCost - marketTiming.reachCost + manualPositionPriorityComponent + feasibilityAdjustment + teamDiversificationComponent - rosterRiskPenalty - availabilityTailPenalty + productionAnchor + credibleCeilingValue - nonProductionStackPenalty + endgameUtility;
       const scoreBreakdown = {
         weightedComponents: contributions,
         optionValue: roleScenarioSummary.optionScoreAdjustment,
@@ -295,11 +333,16 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         teamDiversification: teamDiversificationComponent,
         manualPositionIntent: manualPositionPriorityComponent,
         rosterRisk: -rosterRiskPenalty,
+        productionAnchor,
+        credibleCeiling: credibleCeilingValue,
+         nonProductionStackPenalty: -nonProductionStackPenalty,
+         lateHoldability: lateHoldabilityAdjustment,
+         endgameUtility,
         preAdjustmentScore: baseFinalScore,
         finalDraftScore: finalScore,
         reconciliationResidual: 0,
       };
-      scoreBreakdown.reconciliationResidual = finalScore - (scoreBreakdown.preAdjustmentScore + scoreBreakdown.optionValue + scoreBreakdown.availabilityTail + scoreBreakdown.positionContext + scoreBreakdown.marketUrgency + scoreBreakdown.historicalWait + scoreBreakdown.liveWait + scoreBreakdown.reach + scoreBreakdown.teamDiversification + scoreBreakdown.manualPositionIntent + scoreBreakdown.rosterRisk);
+       scoreBreakdown.reconciliationResidual = finalScore - (scoreBreakdown.preAdjustmentScore + scoreBreakdown.optionValue + scoreBreakdown.availabilityTail + scoreBreakdown.positionContext + scoreBreakdown.marketUrgency + scoreBreakdown.historicalWait + scoreBreakdown.liveWait + scoreBreakdown.reach + scoreBreakdown.teamDiversification + scoreBreakdown.manualPositionIntent + scoreBreakdown.rosterRisk + scoreBreakdown.productionAnchor + scoreBreakdown.credibleCeiling + scoreBreakdown.nonProductionStackPenalty + scoreBreakdown.endgameUtility);
 
       return {
         player,
@@ -345,7 +388,7 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         automaticPositionNeedComponent,
         rosterFeasibilityComponent,
         candidateFeasibility,
-        teamContextSummary: ecosystem.contextsByPlayerId.get(player.id),
+        teamContextSummary: teamContext,
         roleContextSummary,
         sameTeamPlayersBeforePick,
         sameTeamPlayersAfterPick,
@@ -367,6 +410,21 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         availabilityTailPenalty,
         scoreBreakdown,
         diagnosticInputs: { baseProjection, roleProjection, teammateDependencies: (roleRecord?.teammateDependencies ?? []).slice(0, 3), roleDataGeneratedAt: input.roleData?.generatedAt ?? null, minutesOutsideRoleRange: minutesOutsideRoleRange.has(player.id), marketExactPickCount: marketProfileById.get(player.id)?.observedOverallPicks?.length ?? marketProfileById.get(player.id)?.observedRoundEquivalents?.length ?? 0, marketRightCensoredCount: marketProfileById.get(player.id)?.rightCensoredRoundEquivalents?.length ?? 0 },
+        productionAnchor,
+        nonProductionStackTotal,
+        nonProductionStackCap,
+        credibleCeilingValue,
+        highScenarioSurplusPerGame,
+        endgameBlend,
+        promotionPathProbability,
+        currentDepthCompetition,
+        netVacatedMinutes,
+        rawOpportunitySignal,
+        rawBreakoutSignal,
+        rawCeilingSignal,
+        rawRoleSignal,
+        lateHoldabilityAdjustment,
+        dominanceWarning: false,
       };
     })
     .sort(
@@ -376,6 +434,20 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
           left.projection.projectedFantasyPointsPerGame ||
         left.player.name.localeCompare(right.player.name),
     );
+
+  // A diagnostic, not a brittle override: surface any case where an inferior
+  // production/availability/role profile beat a clearly dominant alternative.
+  for (const candidate of recommendations) {
+    candidate.dominanceWarning = recommendations.some((other) =>
+      other.player.id !== candidate.player.id &&
+      candidate.finalScore > other.finalScore &&
+      other.projection.projectedFantasyPointsPerGame >= candidate.projection.projectedFantasyPointsPerGame + 3 &&
+      other.expectedGamesProjection.expectedGames >= candidate.expectedGamesProjection.expectedGames - 1 &&
+      other.roleScenarioSummary.meanSeasonVorp >= candidate.roleScenarioSummary.meanSeasonVorp + 25 &&
+      other.roleAssessment.currentRoleSecurity >= candidate.roleAssessment.currentRoleSecurity - .05 &&
+      Math.abs((other.marketTiming.survivalNextTurn ?? other.marketTiming.survivalEstimate / 100) - (candidate.marketTiming.survivalNextTurn ?? candidate.marketTiming.survivalEstimate / 100)) < .2
+    );
+  }
 
   const positionFilterActive = positionIntent.mode === "Filter" && activeIntentPositions.length > 0;
   const filteredRecommendations = positionFilterActive ? recommendations.filter((recommendation) => recommendation.manualPositionMatch) : recommendations;
@@ -487,6 +559,14 @@ function percentileValue(sortedValues: number[], percentile: number): number {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function roleAssessmentSecurity(metrics: ProjectionMetrics): number {
+  return metrics.roleAssessment?.currentRoleSecurity ?? .5;
+}
+
+function productionBlendForDraft(draftProgress: number): number {
+  return clamp((draftProgress - DRAFT_VALUE_CONFIG.productionDominance.startsAtProgress) / (1 - DRAFT_VALUE_CONFIG.productionDominance.startsAtProgress), 0, 1);
 }
 
 export function calculateAvailabilityDownsideGap(

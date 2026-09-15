@@ -2,6 +2,7 @@ export {
   getMyOverallPicks,
   getSnakeDraftTeamNumber,
   getTeamOverallPicks,
+  getUserPickSchedule,
 } from "./draftOrder";
 export {
   calculateFantasyPoints,
@@ -72,11 +73,12 @@ export { projectExpectedGames, projectMajorInjuryComeback } from "./expectedGame
 export { assessCurrentRole } from "./roleSecurity";
 export { reconcileTeamMinutes, type TeamMinutesBudgetResult } from "./teamMinutesBudget";
 export { calculateReplacementLevels, calculateSeasonValue, type SeasonValueCandidate } from "./seasonValue";
-export { calculateMarketTiming, createRosterFingerprint, createScoringFingerprint, learnMarketProfiles, overallPickToRoundEquivalent, parseMockDraft, roundEquivalentToOverallPick, validateMarketDataSet, validateMarketProfile } from "./marketDraft";
+export { calculateMarketTiming, createRosterFingerprint, createScoringFingerprint, learnMarketProfiles, normalizeDraftProgress, overallPickToRoundEquivalent, parseMockDraft, progressToOverallPick, progressToRoundEquivalent, roundEquivalentToOverallPick, validateMarketDataSet, validateMarketProfile } from "./marketDraft";
 export { calculatePositionContextComposite, type PositionContextInput } from "./positionContext";
 export { createDecisionSnapshot, upsertDecisionSnapshot } from "./decisionLog";
 export { appendRecommendationTrace, createRecommendationTrace, createRecommendationTraceSnapshot, serializeRecommendationTraceExport, RECOMMENDATION_ENGINE_VERSION, RECOMMENDATION_TRACE_SCHEMA_VERSION } from "./recommendationTrace";
 export { applyDraftValueProjection } from "./draftValueProjection";
+export { calculateProjectionSanity, calculateRecentSeasonFantasyPPG, type ProjectionSanitySummary } from "./projectionSanity";
 export { replayDraft, type DraftReplayResult, type DraftReplaySnapshot } from "./draftReplay";
 export { analyzeLateSeasonRegime, calculateTeammateDependencies } from "./lateSeasonRegime";
 export { applyRoleIntelligence } from "./roleProjection";

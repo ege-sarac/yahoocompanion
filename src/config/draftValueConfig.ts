@@ -116,6 +116,8 @@ export const DRAFT_VALUE_CONFIG = {
     materialReasonPenalty: 1.5,
     rangeForFullUncertainty: 24,
   },
+  projectionSanity: { inspectCompressionRatio: .85, strongCompressionRatio: .8, substantialCompressionRatio: .75, inspectInflationRatio: 1.18, strongInflationRatio: 1.28, meaningfulRecentGames: 35, protectedContinuityMinutes: 26 },
+  productionDominance: { startsAtProgress: .45, maximumAnchorAdjustment: 6, nonProductionCapMiddle: 7, nonProductionCapLate: 3, credibleCeilingCap: 5, endgameRoundsRemaining: 5 },
   lateAlternatives: { progressThreshold: .6, count: 4, continuityScoreTolerance: 2.5 },
   replacement: {
     benchRosterShare: 0.72,
@@ -145,6 +147,7 @@ export const DRAFT_VALUE_CONFIG = {
     maximumReachPenalty: 12,
     maximumUrgencyBonus: 9,
     maxConvictionReachRounds: 2,
+    maximumWaitOpportunityCost: 12,
     modelEdgeFullStrengthRanks: 35,
     liveWait: {
       maximumPenalty: 11.5,

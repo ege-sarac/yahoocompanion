@@ -7,6 +7,9 @@ export function createScoringFingerprint(scoring: LeagueConfig["scoring"]): stri
 export function createRosterFingerprint(config: LeagueConfig): string { return `teams:${config.teamCount}|rounds:${config.rounds}|G:${config.roster.G}|F:${config.roster.F}|C:${config.roster.C}|UTIL:${config.roster.UTIL}|BN:${config.roster.BN}`; }
 export function overallPickToRoundEquivalent(overallPick: number, teamCount: number): number { return ((overallPick - 1) / teamCount) + 1; }
 export function roundEquivalentToOverallPick(roundEquivalent: number, teamCount: number): number { return Math.max(1, Math.round((roundEquivalent - 1) * teamCount + 1)); }
+export function normalizeDraftProgress(overallPick: number, teamCount: number, rounds: number): number { return Math.max(0, Math.min(1, (overallPick - 1) / Math.max(1, teamCount * rounds - 1))); }
+export function progressToOverallPick(progress: number, config: Pick<LeagueConfig, "teamCount" | "rounds">): number { return Math.max(1, Math.min(config.teamCount * config.rounds, Math.round(Math.max(0, Math.min(1, progress)) * (config.teamCount * config.rounds - 1) + 1))); }
+export function progressToRoundEquivalent(progress: number, config: Pick<LeagueConfig, "teamCount" | "rounds">): number { return overallPickToRoundEquivalent(progressToOverallPick(progress, config), config.teamCount); }
 
 export type HistoricalConfigSource = "EMBEDDED" | "CLI_OVERRIDE" | "STRUCTURAL_INFERENCE" | "MIXED";
 export interface HistoricalMockOverrides { teamCount?: number; rounds?: number }
@@ -33,6 +36,10 @@ export function validateMarketProfile(value: unknown): MarketPlayerProfile {
   if (value.format !== undefined) { if (!["points", "category", "unknown"].includes(String(value.format))) throw new Error("Invalid market format."); output.format = value.format as MarketFormat; }
   for (const key of ["scoringFingerprint", "updatedAt", "source"] as const) if (typeof value[key] === "string") output[key] = value[key];
   for (const key of ["observedRoundEquivalents", "observedOverallPicks", "rightCensoredRoundEquivalents"] as const) if (value[key] !== undefined) { if (!Array.isArray(value[key]) || value[key].some((item) => typeof item !== "number" || !Number.isFinite(item))) throw new Error(`${key} must contain finite numbers.`); output[key] = [...value[key]] as number[]; }
+  if (value.normalizedObservations !== undefined) {
+    if (!Array.isArray(value.normalizedObservations) || value.normalizedObservations.some((item) => !record(item) || ![item.draftProgress, item.roundEquivalent, item.teamCount, item.rounds].every((entry) => typeof entry === "number" && Number.isFinite(entry)) || typeof item.rightCensored !== "boolean")) throw new Error("normalizedObservations must contain valid source-aware observations.");
+    output.normalizedObservations = value.normalizedObservations.map((item) => ({ draftProgress: Math.max(0, Math.min(1, Number(item.draftProgress))), roundEquivalent: Number(item.roundEquivalent), teamCount: Number(item.teamCount), rounds: Number(item.rounds), rightCensored: Boolean(item.rightCensored) }));
+  }
   return output;
 }
 
@@ -143,26 +150,36 @@ export function learnMarketProfiles(players: readonly Player[], drafts: readonly
   const profiles: MarketPlayerProfile[] = [];
   for (const player of players) {
     const observed: number[] = [], observedOverallPicks: number[] = [], censored: number[] = [];
+    const normalizedObservations: NonNullable<MarketPlayerProfile["normalizedObservations"]> = [];
     let weightedSamples = 0;
     for (const draft of drafts) {
       const match = draft.picks.find((pick) => pick.playerId === player.id);
       const formatWeight = draft.format === "points" || draft.format === "unknown" ? 1 : DRAFT_VALUE_CONFIG.market.mismatchFormatWeight;
       const scoringWeight = !targetConfig || !draft.scoringFingerprint || draft.scoringFingerprint === createScoringFingerprint(targetConfig.scoring) ? 1 : DRAFT_VALUE_CONFIG.market.mismatchScoringWeight;
       const weight = formatWeight * scoringWeight;
-      if (match) { observed.push(overallPickToRoundEquivalent(match.overallPick, draft.teamCount)); observedOverallPicks.push(match.overallPick); }
-      else censored.push(draft.rounds + 1);
+      if (match) {
+        const roundEquivalent = overallPickToRoundEquivalent(match.overallPick, draft.teamCount);
+        observed.push(roundEquivalent); observedOverallPicks.push(match.overallPick);
+        normalizedObservations.push({ draftProgress: normalizeDraftProgress(match.overallPick, draft.teamCount, draft.rounds), roundEquivalent, teamCount: draft.teamCount, rounds: draft.rounds, rightCensored: false });
+      } else {
+        censored.push(draft.rounds + 1);
+        normalizedObservations.push({ draftProgress: 1, roundEquivalent: draft.rounds + 1, teamCount: draft.teamCount, rounds: draft.rounds, rightCensored: true });
+      }
       weightedSamples += weight;
     }
     const yahoo = yahooById.get(player.id);
     if (!observed.length && !censored.length && !yahoo) continue;
-    const sorted = [...observed].sort((a, b) => a - b);
+    const normalizedRoundValues = targetConfig
+      ? normalizedObservations.filter((entry) => !entry.rightCensored).map((entry) => progressToRoundEquivalent(entry.draftProgress, targetConfig))
+      : observed;
+    const sorted = [...normalizedRoundValues].sort((a, b) => a - b);
     const yahooRound = yahoo?.yahooADP && targetConfig ? overallPickToRoundEquivalent(yahoo.yahooADP, targetConfig.teamCount) : yahoo?.yahooPreRank && targetConfig ? overallPickToRoundEquivalent(yahoo.yahooPreRank, targetConfig.teamCount) : undefined;
     const prior = yahooRound ?? DRAFT_VALUE_CONFIG.market.broadPriorRound;
-    const empiricalMean = observed.length ? observed.reduce((sum, value) => sum + value, 0) / observed.length : prior;
+    const empiricalMean = normalizedRoundValues.length ? normalizedRoundValues.reduce((sum, value) => sum + value, 0) / normalizedRoundValues.length : prior;
     const hasEstimate = observed.length >= 2 || yahooRound !== undefined;
     const priorWeight = yahooRound === undefined ? DRAFT_VALUE_CONFIG.market.empiricalPriorSamples : DRAFT_VALUE_CONFIG.market.yahooPriorWeight;
     const shrunk = hasEstimate ? (empiricalMean * weightedSamples + prior * priorWeight) / Math.max(.001, weightedSamples + priorWeight) : undefined;
-    profiles.push({ ...yahoo, playerId: player.id, ...(shrunk === undefined ? {} : { mockRoundEquivalentMedian: shrunk, mockRoundEquivalentLow: sorted.length >= 3 ? quantile(sorted, .25) : Math.max(1, shrunk - DRAFT_VALUE_CONFIG.market.broadPriorSpreadRounds * (1 - confidence(weightedSamples)) * .5), mockRoundEquivalentHigh: sorted.length >= 3 ? quantile(sorted, .75) : shrunk + DRAFT_VALUE_CONFIG.market.broadPriorSpreadRounds * (1 - confidence(weightedSamples)) * .5, mockMedianPick: targetConfig ? roundEquivalentToOverallPick(shrunk, targetConfig.teamCount) : undefined, mockMeanPick: targetConfig ? roundEquivalentToOverallPick(empiricalMean, targetConfig.teamCount) : undefined }), sampleCount: drafts.length, format: "points", scoringFingerprint: targetConfig ? createScoringFingerprint(targetConfig.scoring) : undefined, updatedAt: new Date().toISOString(), source: yahoo ? "mock history + Yahoo prior" : "mock history observation", observedRoundEquivalents: observed, observedOverallPicks, rightCensoredRoundEquivalents: censored });
+    profiles.push({ ...yahoo, playerId: player.id, ...(shrunk === undefined ? {} : { mockRoundEquivalentMedian: shrunk, mockRoundEquivalentLow: sorted.length >= 3 ? quantile(sorted, .25) : Math.max(1, shrunk - DRAFT_VALUE_CONFIG.market.broadPriorSpreadRounds * (1 - confidence(weightedSamples)) * .5), mockRoundEquivalentHigh: sorted.length >= 3 ? quantile(sorted, .75) : shrunk + DRAFT_VALUE_CONFIG.market.broadPriorSpreadRounds * (1 - confidence(weightedSamples)) * .5, mockMedianPick: targetConfig ? roundEquivalentToOverallPick(shrunk, targetConfig.teamCount) : undefined, mockMeanPick: targetConfig ? roundEquivalentToOverallPick(empiricalMean, targetConfig.teamCount) : undefined }), sampleCount: drafts.length, format: "points", scoringFingerprint: targetConfig ? createScoringFingerprint(targetConfig.scoring) : undefined, updatedAt: new Date().toISOString(), source: yahoo ? "mock history + Yahoo prior" : "mock history observation", observedRoundEquivalents: observed, observedOverallPicks, rightCensoredRoundEquivalents: censored, normalizedObservations });
   }
   return { schemaVersion: 1, generatedAt: new Date().toISOString(), mockDraftCount: drafts.length, yahooRanksLoaded: yahooProfiles.length, matchingScoringSamples: targetConfig ? drafts.filter((draft) => !draft.scoringFingerprint || draft.scoringFingerprint === createScoringFingerprint(targetConfig.scoring)).length : 0, profiles, warnings: [] };
 }
@@ -171,27 +188,32 @@ export function calculateMarketTiming(profile: MarketPlayerProfile | undefined, 
   if (!profile) return modelOnlyTiming(currentPick, nextUserPick, modelValueRank, modelPoolSize, liveRoomSurvivalEvidence);
   const yahooPick = profile.yahooADP ?? profile.yahooPreRank;
   const yahooRound = yahooPick ? overallPickToRoundEquivalent(yahooPick, config.teamCount) : undefined;
-  const observed = profile.observedRoundEquivalents ?? [], censored = profile.rightCensoredRoundEquivalents ?? [];
+  const normalized = normalizedMarketObservations(profile, config);
+  const observed = normalized.filter((entry) => !entry.rightCensored), censored = normalized.filter((entry) => entry.rightCensored);
   const sample = (observed.length + censored.length) || (profile.sampleCount ?? 0);
   // Legacy generated profiles may still carry a shrunken median from one mock. Treat that as an observation, not an ADP estimate.
   const mockRound = sample <= 1 && yahooRound === undefined ? undefined : profile.mockRoundEquivalentMedian;
   const marketConfidence = clamp01((sample / DRAFT_VALUE_CONFIG.market.fullConfidenceSamples) * .75 + (yahooRound ? .2 : 0));
   const marketEvidenceLevel = sample <= 0 ? "NONE" as const : sample === 1 && !yahooRound ? "VERY_LOW" as const : marketConfidence < .35 ? "LOW" as const : marketConfidence < .65 ? "MEDIUM" as const : "HIGH" as const;
   const marketEvidenceLabel = observationLabel(profile, marketEvidenceLevel);
+  const timingDirectionConfidence = clamp01((observed.length + censored.length * .8 + liveRoomSurvivalEvidence * 1.25) / 5);
   const blendedRound = mockRound !== undefined && yahooRound !== undefined ? mockRound * (.55 + marketConfidence * .25) + yahooRound * (.45 - marketConfidence * .25) : mockRound ?? yahooRound;
   const currentRound = overallPickToRoundEquivalent(currentPick, config.teamCount);
   const nextRound = nextUserPick === null ? null : overallPickToRoundEquivalent(nextUserPick, config.teamCount);
+  const nextProgress = nextUserPick === null ? null : normalizeDraftProgress(nextUserPick, config.teamCount, config.rounds);
+  const timingBlend = smoothTimingBlend(normalizeDraftProgress(currentPick, config.teamCount, config.rounds));
   if (blendedRound === undefined) {
-    const survival = conditionalObservationSurvival(profile, currentRound, nextRound, liveRoomSurvivalEvidence);
+    const survival = nextProgress === null ? 0 : shrunkSurvival(normalized, nextProgress, liveRoomSurvivalEvidence);
     const adjustmentCap = marketEvidenceLevel === "VERY_LOW" ? 2 : 0;
     const waitValue = nextRound === null ? 0 : survival >= .65 ? Math.min(adjustmentCap, (survival - .65) / .35 * adjustmentCap) : 0;
     const liveWaitCost = calculateLiveWaitCost(currentPick, nextUserPick, survival, liveRoomSurvivalEvidence, modelValueRank);
-    return { marketPickEstimate: null, marketRoundLow: null, marketRoundHigh: null, marketConfidence, marketCostRank: null, modelValueRank, valueLabel: "UNKNOWN", survivalEstimate: Math.round(survival * 100), survivalConfidence: Math.max(.15, Math.min(.45, .15 + liveRoomSurvivalEvidence * .1)), survivalSource: "MARKET_HISTORY", survivalLabel: lowSampleSurvivalLabel(survival), draftNowUrgency: 0, waitValue, reachCost: 0, marketEvidenceLabel, marketEvidenceLevel, conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost };
+    const waitOpportunityCost = Math.min(DRAFT_VALUE_CONFIG.market.maximumWaitOpportunityCost, (waitValue + liveWaitCost) * timingBlend);
+    return { marketPickEstimate: null, marketRoundLow: null, marketRoundHigh: null, marketConfidence, marketCostRank: null, modelValueRank, valueLabel: "UNKNOWN", survivalEstimate: Math.round(survival * 100), survivalConfidence: Math.max(.15, Math.min(.45, .15 + liveRoomSurvivalEvidence * .1)), survivalSource: "MARKET_HISTORY", survivalLabel: lowSampleSurvivalLabel(survival), draftNowUrgency: 0, waitValue: Math.max(0, waitOpportunityCost - liveWaitCost), reachCost: 0, marketEvidenceLabel, marketEvidenceLevel, conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost, marketPrecisionConfidence: marketConfidence, timingDirectionConfidence, survivalNextTurn: survival, survivalTwoTurns: nextUserPick === null ? 0 : shrunkSurvival(normalized, normalizeDraftProgress(nextUserPick + Math.max(1, nextUserPick - currentPick), config.teamCount, config.rounds), liveRoomSurvivalEvidence), waitOpportunityCost, timingLabel: timingLabel(survival, waitOpportunityCost, nextUserPick), timingBlend };
   }
   const roomAdjustment = calculateRoomPaceAdjustment(draftPicks, player, playerPool, config);
   const adjustedRound = Math.max(1, blendedRound + roomAdjustment);
   const estimate = roundEquivalentToOverallPick(adjustedRound, config.teamCount);
-  let survivalEstimate = nextRound === null ? 0 : conditionalSurvival(profile, currentRound, nextRound, adjustedRound, marketConfidence);
+  let survivalEstimate = nextProgress === null ? 0 : shrunkSurvival(normalized, nextProgress, liveRoomSurvivalEvidence, adjustedRound, currentRound, marketConfidence, config.rounds);
   if (liveRoomSurvivalEvidence) survivalEstimate = Math.max(survivalEstimate, Math.min(.9, .68 + liveRoomSurvivalEvidence * .08));
   const survivalSource = mockRound !== undefined && yahooRound !== undefined ? "BLENDED_MARKET" as const : mockRound !== undefined ? "MARKET_HISTORY" as const : "YAHOO_ADP" as const;
   const survivalConfidence = clamp01(Math.max(marketConfidence * (observed.length ? 1 : .72), liveRoomSurvivalEvidence ? .35 : 0));
@@ -202,20 +224,48 @@ export function calculateMarketTiming(profile: MarketPlayerProfile | undefined, 
   // Market data is a small tie-breaker until a richer, independent corpus exists.
   const adjustmentCap = 2;
   const reachCost = Math.min(adjustmentCap, effectiveEarly / Math.max(1, DRAFT_VALUE_CONFIG.market.maxConvictionReachRounds) * DRAFT_VALUE_CONFIG.market.maximumReachPenalty);
-  const waitValue = survivalEstimate >= DRAFT_VALUE_CONFIG.market.waitLikelyThreshold ? Math.min(adjustmentCap, (survivalEstimate - DRAFT_VALUE_CONFIG.market.waitLikelyThreshold) / (1 - DRAFT_VALUE_CONFIG.market.waitLikelyThreshold) * DRAFT_VALUE_CONFIG.market.maximumWaitPenalty) : 0;
   const urgency = survivalEstimate <= DRAFT_VALUE_CONFIG.market.urgencyLikelyThreshold ? Math.min(adjustmentCap, (DRAFT_VALUE_CONFIG.market.urgencyLikelyThreshold - survivalEstimate) / DRAFT_VALUE_CONFIG.market.urgencyLikelyThreshold * DRAFT_VALUE_CONFIG.market.maximumUrgencyBonus) : 0;
   const liveWaitCost = calculateLiveWaitCost(currentPick, nextUserPick, survivalEstimate, liveRoomSurvivalEvidence, modelValueRank);
-  return { marketPickEstimate: estimate, marketRoundLow: profile.mockRoundEquivalentLow ?? Math.max(1, adjustedRound - 1.5), marketRoundHigh: profile.mockRoundEquivalentHigh ?? adjustedRound + 1.5, marketConfidence, marketCostRank: estimate, modelValueRank, valueLabel: modelEdge >= 35 ? "SLEEPER" : modelEdge >= 18 ? "MODEL VALUE" : modelEdge <= -20 ? "OVERPRICED" : "FAIR", survivalEstimate: Math.round(survivalEstimate * 100), survivalConfidence, survivalSource, survivalLabel: survivalLabel(survivalEstimate, survivalConfidence), draftNowUrgency: urgency, waitValue, reachCost, marketEvidenceLabel, marketEvidenceLevel, conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost };
+  const historicalWait = nextRound === null ? 0 : survivalEstimate >= DRAFT_VALUE_CONFIG.market.waitLikelyThreshold ? DRAFT_VALUE_CONFIG.market.maximumWaitOpportunityCost * Math.pow((survivalEstimate - DRAFT_VALUE_CONFIG.market.waitLikelyThreshold) / (1 - DRAFT_VALUE_CONFIG.market.waitLikelyThreshold), .8) * (.35 + timingDirectionConfidence * .65) : 0;
+  const waitOpportunityCost = Math.min(DRAFT_VALUE_CONFIG.market.maximumWaitOpportunityCost, (historicalWait + liveWaitCost) * timingBlend);
+  const survivalTwoTurns = nextUserPick === null ? 0 : shrunkSurvival(normalized, normalizeDraftProgress(nextUserPick + Math.max(1, nextUserPick - currentPick), config.teamCount, config.rounds), liveRoomSurvivalEvidence, adjustedRound, currentRound, marketConfidence, config.rounds);
+  return { marketPickEstimate: estimate, marketRoundLow: profile.mockRoundEquivalentLow ?? Math.max(1, adjustedRound - 1.5), marketRoundHigh: profile.mockRoundEquivalentHigh ?? adjustedRound + 1.5, marketConfidence, marketCostRank: estimate, modelValueRank, valueLabel: modelEdge >= 35 ? "SLEEPER" : modelEdge >= 18 ? "MODEL VALUE" : modelEdge <= -20 ? "OVERPRICED" : "FAIR", survivalEstimate: Math.round(survivalEstimate * 100), survivalConfidence, survivalSource, survivalLabel: survivalLabel(survivalEstimate, survivalConfidence), draftNowUrgency: urgency, waitValue: Math.max(0, waitOpportunityCost - liveWaitCost), reachCost, marketEvidenceLabel, marketEvidenceLevel, conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost, marketPrecisionConfidence: marketConfidence, timingDirectionConfidence, survivalNextTurn: survivalEstimate, survivalTwoTurns, waitOpportunityCost, timingLabel: timingLabel(survivalEstimate, waitOpportunityCost, nextUserPick), timingBlend };
 }
 
 function modelOnlyTiming(currentPick: number, nextPick: number | null, rank: number, _pool: number, liveRoomSurvivalEvidence = 0): MarketTimingProjection {
-  if (nextPick === null) return { marketPickEstimate: null, marketRoundLow: null, marketRoundHigh: null, marketConfidence: 0, marketCostRank: null, modelValueRank: rank, valueLabel: "UNKNOWN", survivalEstimate: 0, survivalConfidence: .15, survivalSource: "MODEL_ONLY", survivalLabel: "No later user pick", draftNowUrgency: 0, waitValue: 0, reachCost: 0, marketEvidenceLabel: "No market evidence", marketEvidenceLevel: "NONE", conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost: 0 };
+  if (nextPick === null) return { marketPickEstimate: null, marketRoundLow: null, marketRoundHigh: null, marketConfidence: 0, marketCostRank: null, modelValueRank: rank, valueLabel: "UNKNOWN", survivalEstimate: 0, survivalConfidence: .15, survivalSource: "MODEL_ONLY", survivalLabel: "No later user pick", draftNowUrgency: 0, waitValue: 0, reachCost: 0, marketEvidenceLabel: "No market evidence", marketEvidenceLevel: "NONE", conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost: 0, marketPrecisionConfidence: 0, timingDirectionConfidence: 0, survivalNextTurn: 0, survivalTwoTurns: 0, waitOpportunityCost: 0, timingLabel: "DRAFT NOW" };
   const scale = Math.max(6, (nextPick - currentPick) * .55);
   let survival = clamp01(1 / (1 + Math.exp(-(rank - (nextPick - currentPick)) / scale)));
   if (liveRoomSurvivalEvidence) survival = Math.max(survival, Math.min(.9, .68 + liveRoomSurvivalEvidence * .08));
   const liveWaitCost = calculateLiveWaitCost(currentPick, nextPick, survival, liveRoomSurvivalEvidence, rank);
-  return { marketPickEstimate: null, marketRoundLow: null, marketRoundHigh: null, marketConfidence: 0, marketCostRank: null, modelValueRank: rank, valueLabel: "UNKNOWN", survivalEstimate: Math.round(survival * 100), survivalConfidence: Math.max(.2, liveRoomConfidence(liveRoomSurvivalEvidence)), survivalSource: "MODEL_ONLY", survivalLabel: survivalLabel(survival, .2), draftNowUrgency: (1 - survival) * 3, waitValue: 0, reachCost: 0, marketEvidenceLabel: "No market evidence", marketEvidenceLevel: "NONE", conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost };
+  const waitOpportunityCost = Math.min(DRAFT_VALUE_CONFIG.market.maximumWaitOpportunityCost, liveWaitCost + Math.max(0, survival - .75) * 4);
+  return { marketPickEstimate: null, marketRoundLow: null, marketRoundHigh: null, marketConfidence: 0, marketCostRank: null, modelValueRank: rank, valueLabel: "UNKNOWN", survivalEstimate: Math.round(survival * 100), survivalConfidence: Math.max(.2, liveRoomConfidence(liveRoomSurvivalEvidence)), survivalSource: "MODEL_ONLY", survivalLabel: survivalLabel(survival, .2), draftNowUrgency: (1 - survival) * 3, waitValue: Math.max(0, waitOpportunityCost - liveWaitCost), reachCost: 0, marketEvidenceLabel: "No market evidence", marketEvidenceLevel: "NONE", conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost, marketPrecisionConfidence: 0, timingDirectionConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), survivalNextTurn: survival, survivalTwoTurns: Math.max(0, survival - .12), waitOpportunityCost, timingLabel: timingLabel(survival, waitOpportunityCost, nextPick), timingBlend: smoothTimingBlend(currentPick / Math.max(currentPick + Math.max(1, nextPick - currentPick), 1)) };
 }
+function normalizedMarketObservations(profile: MarketPlayerProfile, target: LeagueConfig): Array<{ progress: number; rightCensored: boolean }> {
+  if (profile.normalizedObservations?.length) return profile.normalizedObservations.map((entry) => ({ progress: clamp01(entry.draftProgress), rightCensored: entry.rightCensored }));
+  // Legacy profiles did not preserve source dimensions. Their round-equivalent is
+  // still reusable as an explicitly lower-confidence, target-config approximation.
+  return [
+    ...(profile.observedRoundEquivalents ?? []).map((round) => ({ progress: clamp01((round - 1) / Math.max(1, target.rounds - 1)), rightCensored: false })),
+    ...(profile.rightCensoredRoundEquivalents ?? []).map((round) => ({ progress: clamp01((round - 1) / Math.max(1, target.rounds - 1)), rightCensored: true })),
+  ];
+}
+function shrunkSurvival(observations: readonly { progress: number; rightCensored: boolean }[], threshold: number, liveEvidence: number, centerRound?: number, currentRound?: number, precision = 0, rounds = 15): number {
+  const eligible = observations.filter((entry) => entry.rightCensored || entry.progress >= 0);
+  if (eligible.length) {
+    const survived = eligible.filter((entry) => entry.progress >= threshold).length;
+    // Beta(1.5, 1.5): transparent conservative shrinkage for small samples.
+    return clamp01((survived + 1.5 + liveEvidence * .85) / (eligible.length + 3 + liveEvidence * .85));
+  }
+  if (centerRound !== undefined && currentRound !== undefined) {
+    const targetRound = 1 + threshold * Math.max(1, rounds - 1);
+    const spread = 1.1 + (1 - precision) * 2.5;
+    return clamp01(1 / (1 + Math.exp(-(centerRound - targetRound) / spread)));
+  }
+  return liveEvidence ? clamp01((1.5 + liveEvidence * .85) / (3 + liveEvidence * .85)) : .5;
+}
+function smoothTimingBlend(progress: number): number { return .15 + .85 * clamp01((clamp01(progress) - .35) / .25) ** .8; }
+function timingLabel(survival: number, wait: number, nextPick: number | null): "DRAFT NOW" | "WINDOW APPROACHING" | "LIKELY TO SURVIVE" | "TARGET LATER" { if (nextPick === null || survival < .38) return "DRAFT NOW"; if (wait >= 7 && survival >= .78) return "TARGET LATER"; return survival >= .62 ? "LIKELY TO SURVIVE" : "WINDOW APPROACHING"; }
 function calculateLiveWaitCost(currentPick: number, nextPick: number | null, survival: number, evidence: number, rank: number): number {
   if (nextPick === null || evidence <= 0 || survival < DRAFT_VALUE_CONFIG.market.liveWait.minimumSurvivalEvidence) return 0;
   const config = DRAFT_VALUE_CONFIG.market.liveWait;
@@ -226,20 +276,6 @@ function calculateLiveWaitCost(currentPick: number, nextPick: number | null, sur
   return Math.min(config.maximumPenalty, config.maximumPenalty * turnStrength * windowStrength * survivalStrength * eliteEscape);
 }
 function liveRoomConfidence(evidence: number): number { return Math.min(.9, evidence / DRAFT_VALUE_CONFIG.market.liveWait.fullEvidenceTurns * .85); }
-function conditionalSurvival(profile: MarketPlayerProfile, currentRound: number, nextRound: number, center: number, confidenceValue: number): number {
-  const observed = (profile.observedRoundEquivalents ?? []).filter((pick) => pick >= currentRound), censored = (profile.rightCensoredRoundEquivalents ?? []).filter((end) => end > currentRound);
-  if (observed.length + censored.length >= 3) { const survived = observed.filter((pick) => pick >= nextRound).length + censored.filter((end) => end >= nextRound).length; return clamp01((survived + 1) / (observed.length + censored.length + 2)); }
-  if (!observed.length && !censored.length && center < currentRound) return .72;
-  const spread = 1.1 + (1 - confidenceValue) * 2.5;
-  return clamp01(1 / (1 + Math.exp(-(center - nextRound) / spread)));
-}
-function conditionalObservationSurvival(profile: MarketPlayerProfile, currentRound: number, nextRound: number | null, evidence: number): number {
-  if (nextRound === null) return 0;
-  const observed = (profile.observedRoundEquivalents ?? []).filter((pick) => pick >= currentRound), censored = (profile.rightCensoredRoundEquivalents ?? []).filter((end) => end > currentRound);
-  let survival = censored.some((end) => end >= nextRound) ? .8 : observed.some((pick) => pick >= nextRound) ? .55 : .7;
-  if (evidence) survival = Math.max(survival, Math.min(.9, .7 + evidence * .08));
-  return survival;
-}
 function observationLabel(profile: MarketPlayerProfile, level: MarketTimingProjection["marketEvidenceLevel"]): string {
   const pick = profile.observedOverallPicks?.[0];
   if (pick !== undefined && (profile.observedOverallPicks?.length ?? 0) === 1) return `Picked #${pick} once (${level.replace("_", " ")})`;

@@ -3,6 +3,7 @@ import type { DraftPick, DraftState, LeagueConfig, MarketDataSet, NewPlayerProje
 import { createInitialDraftState, deriveMyRoster, draftPlayer } from "./draftState";
 import { createDecisionSnapshot, upsertDecisionSnapshot } from "./decisionLog";
 import { rankPlayers } from "./recommendationEngine";
+import { getSnakeDraftTeamNumber, getUserPickSchedule } from "./draftOrder";
 
 export interface DraftReplaySnapshot {
   overallPick: number;
@@ -40,7 +41,7 @@ export function replayDraft(
   for (let overallPick = 1; overallPick <= rawPicks.length; overallPick++) {
     const raw = rawPicks[overallPick - 1];
     const selectedId = typeof raw.playerId === "string" ? raw.playerId : null;
-    const isMyPick = ((overallPick - 1) % (config.teamCount * 2) < config.teamCount ? ((overallPick - 1) % config.teamCount) + 1 : config.teamCount - ((overallPick - 1) % config.teamCount)) === config.userDraftSlot;
+    const isMyPick = getSnakeDraftTeamNumber(overallPick, config.teamCount) === config.userDraftSlot;
     if (isMyPick) {
       const ranking = rankPlayers({ players, draftedPlayerIds: state.draftedPlayerIds, manualUnavailablePlayerIds: state.manualUnavailablePlayerIds, myRoster: deriveMyRoster(state, players), currentRound: Math.ceil(overallPick / config.teamCount), currentOverallPick: overallPick, draftPicks: state.picks, leagueConfig: config, newPlayerInputs, teamEcosystemEnabled: true, roleData, marketData, decisionLog: state.decisionLog });
       const selectedRankIndex = selectedId ? ranking.recommendations.findIndex((entry) => entry.player.id === selectedId) : -1;
@@ -48,7 +49,7 @@ export function replayDraft(
       const bestSeasonValue = [...ranking.recommendations].sort((left, right) => right.seasonValue.seasonVorp - left.seasonValue.seasonVorp)[0] ?? null;
       const bestByPosition = Object.fromEntries((["G", "F", "C"] as YahooPosition[]).flatMap((position) => { const found = ranking.recommendations.find((entry) => entry.player.yahooPositions.includes(position)); return found ? [[position, found]] : []; }));
       const missingCritical = (Object.keys(ranking.positionNeedUrgency) as YahooPosition[]).find((position) => ranking.positionNeedUrgency[position].label === "CRITICAL" && !ranking.topRecommendations.some((entry) => entry.player.yahooPositions.includes(position)));
-      const nextUserPick = nextUserPickAfter(overallPick, config, rawPicks.length);
+      const nextUserPick = getUserPickSchedule(overallPick, config).nextUserPick;
       const nextWindow = nextUserPick === null ? null : rawPicks.slice(overallPick, nextUserPick - 1).map((pick) => typeof pick.playerId === "string" ? pick.playerId : null).filter((id): id is string => id !== null);
       const topFiveIds = ranking.topRecommendations.map((entry) => entry.player.id);
       const topFiveSurvivalToNextTurn = nextWindow === null ? null : topFiveIds.filter((id) => !nextWindow.includes(id)).length;
@@ -64,14 +65,4 @@ export function replayDraft(
     try { state = draftPlayer(state, selectedId, config); } catch (error) { warnings.push(`Pick ${overallPick}: ${error instanceof Error ? error.message : "invalid selection"}`); state = { ...state, currentOverallPick: overallPick + 1 }; }
   }
   return { snapshots, warnings, finalState: state };
-}
-
-function nextUserPickAfter(overallPick: number, config: LeagueConfig, availablePicks: number): number | null {
-  for (let candidate = overallPick + 1; candidate <= availablePicks; candidate++) {
-    const pickInRound = ((candidate - 1) % config.teamCount) + 1;
-    const round = Math.ceil(candidate / config.teamCount);
-    const teamNumber = round % 2 === 0 ? config.teamCount - pickInRound + 1 : pickInRound;
-    if (teamNumber === config.userDraftSlot) return candidate;
-  }
-  return null;
 }

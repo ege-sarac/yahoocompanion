@@ -1,6 +1,6 @@
 import { DEFAULT_LEAGUE_CONFIG, getTotalDraftPicks } from "../config/leagueConfig";
 import type { DraftDecisionSnapshot, DraftExportEnvelope, DraftPick, DraftState, LeagueConfig, Player, PositionIntent } from "../types";
-import { getMyOverallPicks, getSnakeDraftTeamNumber } from "./draftOrder";
+import { getMyOverallPicks, getSnakeDraftTeamNumber, getUserPickSchedule } from "./draftOrder";
 import { createRosterFingerprint, createScoringFingerprint } from "./marketDraft";
 import { upsertDecisionSnapshot } from "./decisionLog";
 import { DEFAULT_RECOMMENDATION_DISPLAY, normalizeRecommendationDisplay } from "../config/recommendationDisplayConfig";
@@ -64,7 +64,7 @@ export function getDraftInfo(overallPick: number, config: LeagueConfig = DEFAULT
 }
 
 export function getNextMyPick(currentOverallPick: number, config: LeagueConfig = DEFAULT_LEAGUE_CONFIG): number | null {
-  return getMyOverallPicks(config).find((pick) => pick >= currentOverallPick) ?? null;
+  return getUserPickSchedule(currentOverallPick - 1, config).nextUserPick;
 }
 
 export function getPreviousMyPick(currentOverallPick: number, config: LeagueConfig = DEFAULT_LEAGUE_CONFIG): number | null {
@@ -74,8 +74,7 @@ export function getPreviousMyPick(currentOverallPick: number, config: LeagueConf
 export function getPicksUntilMyNextPick(
   currentOverallPick: number, config: LeagueConfig = DEFAULT_LEAGUE_CONFIG,
 ): number | null {
-  const nextPick = getNextMyPick(currentOverallPick, config);
-  return nextPick === null ? null : nextPick - currentOverallPick;
+  return getUserPickSchedule(currentOverallPick, config).picksUntilNextUserPick;
 }
 
 export function getDraftProgress(completedPicks: number, config: LeagueConfig = DEFAULT_LEAGUE_CONFIG): number {
@@ -209,7 +208,8 @@ export function serializeDraftState(state: DraftState): string {
 }
 
 export function serializeDraftExport(state: DraftState, config: LeagueConfig, createdAt = new Date().toISOString()): string {
-  const envelope: DraftExportEnvelope = { schemaVersion: 2, metadata: { teamCount: config.teamCount, rounds: config.rounds, userDraftSlot: config.userDraftSlot, scoringFingerprint: createScoringFingerprint(config.scoring), rosterFingerprint: createRosterFingerprint(config), createdAt }, draftState: structuredClone(state), recommendationTrace: structuredClone(state.recommendationTrace) };
+  // The trace lives canonically in draftState.  Import keeps accepting legacy root copies.
+  const envelope: DraftExportEnvelope = { schemaVersion: 2, metadata: { teamCount: config.teamCount, rounds: config.rounds, userDraftSlot: config.userDraftSlot, scoringFingerprint: createScoringFingerprint(config.scoring), rosterFingerprint: createRosterFingerprint(config), createdAt }, draftState: structuredClone(state) };
   return JSON.stringify(envelope, null, 2);
 }
 

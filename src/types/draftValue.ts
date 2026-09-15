@@ -78,6 +78,16 @@ export interface MarketPlayerProfile {
   observedRoundEquivalents?: number[];
   observedOverallPicks?: number[];
   rightCensoredRoundEquivalents?: number[];
+  /** Source-aware observations permit market evidence from different league sizes. */
+  normalizedObservations?: MarketObservation[];
+}
+
+export interface MarketObservation {
+  draftProgress: number;
+  roundEquivalent: number;
+  teamCount: number;
+  rounds: number;
+  rightCensored: boolean;
 }
 
 export interface MarketDataSet {
@@ -112,6 +122,13 @@ export interface MarketTimingProjection {
   liveRoomSurvivalEvidence: number;
   liveRoomConfidence: number;
   liveWaitCost: number;
+  marketPrecisionConfidence?: number;
+  timingDirectionConfidence?: number;
+  survivalNextTurn?: number;
+  survivalTwoTurns?: number;
+  waitOpportunityCost?: number;
+  timingLabel?: "DRAFT NOW" | "WINDOW APPROACHING" | "LIKELY TO SURVIVE" | "TARGET LATER";
+  timingBlend?: number;
 }
 
 export type RoleScenarioLabel = "LOW" | "BASE" | "HIGH";

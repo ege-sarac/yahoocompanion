@@ -32,6 +32,8 @@ export interface RecommendationTraceHeader {
   draftProgress: number;
   nextUserPick: number | null;
   picksUntilNextUserPick: number | null;
+  secondNextUserPick: number | null;
+  picksUntilSecondNextUserPick: number | null;
   scoringFingerprint: string;
   rosterFingerprint: string;
   draftFingerprint: string;
@@ -69,7 +71,8 @@ export interface RecommendationCandidateTrace {
   previousDraftScore: number | null;
   draftScoreChange: number | null;
   projection: { projectedFantasyPointsPerGame: number; expectedGames: number; expectedGamesLow: number; expectedGamesHigh: number; seasonVorp: number; meanSeasonVorp: number; optionAdjustedSeasonVorp: number; replacementFPPerGameUsed: number; healthyGameMPG: number; points: number; offensiveRebounds: number; defensiveRebounds: number; assists: number; steals: number; blocks: number; turnovers: number; projectedDoubleDoubles: number; projectedTripleDoubles: number };
-  transformation: { baseProjectionFPPerGame: number; baseHealthyMPG: number; finalHealthyMPG: number; minuteAdjustment: number; rateAdjustment: number; teamContextAdjustment: number };
+  projectionSanity: { recentSeasonFantasyPPG: number | null; weightedHistoricalFantasyPPG: number | null; projectionCompressionRatio: number | null; unexplainedProjectionCompression: boolean; unexplainedProjectionInflation: boolean; projectionChangeReasons: string[] };
+  transformation: { baseProjectionFPPerGame: number; baseHealthyMPG: number; finalHealthyMPG: number; minuteAdjustment: number; rateAdjustment: number; teamContextAdjustment: number; historicalBlendEffect: number; minutesEffect: number; rateEffect: number; absenceDependencyEffect: number; injuryEffect: number; declineEffect: number; doubleTripleDoubleEffect: number; finalProjectedFantasyPPG: number };
   role: { skillConfidence: number; currentRoleSecurity: number; rotationTier: string; roleSustainability: number; minutesLow: number; minutesBase: number; minutesHigh: number; currentTeamContinuity: boolean | null; minutesOutsideRoleRange: boolean; roleDataGeneratedAt: string | null };
   scenarios: Array<{ label: "LOW" | "BASE" | "HIGH"; probability: number; healthyGameMPG: number; projectedFantasyPointsPerGame: number; seasonVorp: number }>;
   option: { optionPremium: number; credibleUpsideSurplus: number; credibleDownsideGap: number; upsideLabel: "LOW" | "MEDIUM" | "HIGH" };
@@ -78,7 +81,8 @@ export interface RecommendationCandidateTrace {
   availability: { participationRisk: number; availabilityRiskLabel: string; majorComeback: boolean; postReturnEstablished: boolean; availabilityDownsideGap: number; availabilityTailPenalty: number };
   market: { marketEvidenceType: string; exactPickCount: number; rightCensoredCount: number; marketObservationSummary: string; marketPickEstimate: number | null; marketRoundEstimate: number | null; marketConfidence: number; conditionalSurvival: boolean; survivalEstimate: number; liveRoomSurvivalEvidence: number; historicalWaitAdjustment: number; liveWaitCost: number; reachCost: number; modelEdge: number | null; modelEdgeEscapeActivated: boolean };
   position: { rosterFeasible: boolean; positionNeed: number; positionScarcity: number; tierDrop: number; recentPositionRun: number; marketDepletion: number; flexibility: number; composite: number; cap: number; contribution: number };
-  score: { weightedComponents: Record<string, number>; optionValue: number; availabilityTail: number; positionContext: number; marketUrgency: number; historicalWait: number; liveWait: number; reach: number; teamDiversification: number; manualPositionIntent: number; rosterRisk: number; preAdjustmentScore: number; finalDraftScore: number; reconciliationResidual: number };
+  score: { weightedComponents: Record<string, number>; optionValue: number; availabilityTail: number; positionContext: number; marketUrgency: number; historicalWait: number; liveWait: number; reach: number; teamDiversification: number; manualPositionIntent: number; rosterRisk: number; productionAnchor: number; credibleCeiling: number; nonProductionStackPenalty: number; lateHoldability: number; endgameUtility: number; preAdjustmentScore: number; finalDraftScore: number; reconciliationResidual: number };
+  pickNow: { intrinsicPlayerValue: number; pickNowValue: number; targetLaterValue: number; rawOpportunitySignal: number; rawBreakoutSignal: number; rawCeilingSignal: number; rawRoleSignal: number; productionAnchor: number; nonProductionStackTotal: number; nonProductionStackCap: number; credibleCeilingValue: number; highScenarioSurplusPerGame: number; fantasyPointsPerMinute: number; promotionPathProbability: number; currentDepthCompetition: number; netVacatedMinutes: number; endgameBlend: number; lateHoldabilityAdjustment: number; endgameUtility: number; timingBlend: number; timingDirectionConfidence: number; marketPrecisionConfidence: number; survivalNextTurn: number; survivalTwoTurns: number; waitOpportunityCost: number; timingLabel: string };
   reasons: string[];
   flags: string[];
 }
