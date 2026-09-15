@@ -3,6 +3,8 @@ import type { DraftDecisionSnapshot, DraftExportEnvelope, DraftPick, DraftState,
 import { getMyOverallPicks, getSnakeDraftTeamNumber } from "./draftOrder";
 import { createRosterFingerprint, createScoringFingerprint } from "./marketDraft";
 import { upsertDecisionSnapshot } from "./decisionLog";
+import { DEFAULT_RECOMMENDATION_DISPLAY, normalizeRecommendationDisplay } from "../config/recommendationDisplayConfig";
+import { appendRecommendationTrace, createRecommendationTrace } from "./recommendationTrace";
 
 export type DraftAction =
   | { type: "undo-last-pick"; config?: LeagueConfig }
@@ -32,6 +34,10 @@ export function createInitialDraftState(): DraftState {
     preferredMaxSameTeam: 2,
     decisionLoggingEnabled: true,
     decisionLog: [],
+    recommendationTraceEnabled: true,
+    recommendationTraceGranularity: "USER_TURNS",
+    recommendationDisplay: structuredClone(DEFAULT_RECOMMENDATION_DISPLAY),
+    recommendationTrace: createRecommendationTrace(),
   };
 }
 
@@ -76,7 +82,7 @@ export function getDraftProgress(completedPicks: number, config: LeagueConfig = 
   return Math.min(1, Math.max(0, completedPicks / Math.max(1, getTotalDraftPicks(config) - 1)));
 }
 
-export function draftPlayer(state: DraftState, playerId: string, config: LeagueConfig = DEFAULT_LEAGUE_CONFIG, decisionSnapshot?: DraftDecisionSnapshot): DraftState {
+export function draftPlayer(state: DraftState, playerId: string, config: LeagueConfig = DEFAULT_LEAGUE_CONFIG, decisionSnapshot?: DraftDecisionSnapshot, traceSnapshot?: DraftState["recommendationTrace"]["snapshots"][number]): DraftState {
   const normalizedPlayerId = playerId.trim();
   if (!normalizedPlayerId) {
     throw new Error("A player ID is required.");
@@ -114,6 +120,7 @@ export function draftPlayer(state: DraftState, playerId: string, config: LeagueC
     currentOverallPick: state.currentOverallPick + 1,
     positionIntent: shouldClearIntent ? { mode: "Normal", positions: [] } : state.positionIntent,
     decisionLog: decisionSnapshot && state.decisionLoggingEnabled ? upsertDecisionSnapshot(state.decisionLog, decisionSnapshot) : state.decisionLog,
+    recommendationTrace: traceSnapshot && state.recommendationTraceEnabled ? appendRecommendationTrace(state.recommendationTrace, traceSnapshot, state) : state.recommendationTrace,
   };
 }
 
@@ -170,8 +177,8 @@ export function setPositionIntent(state: DraftState, intent: PositionIntent): Dr
   return { ...state, positionIntent: { mode: intent.mode, positions } };
 }
 
-export function updateDraftPreferences(state: DraftState, preferences: Partial<Pick<DraftState, "keepPositionPreferenceAfterMyPick" | "teamEcosystemEnabled" | "showTeamContextDetails" | "teamDiversificationMode" | "preferredMaxSameTeam" | "decisionLoggingEnabled">>): DraftState {
-  return { ...state, ...preferences };
+export function updateDraftPreferences(state: DraftState, preferences: Partial<Pick<DraftState, "keepPositionPreferenceAfterMyPick" | "teamEcosystemEnabled" | "showTeamContextDetails" | "teamDiversificationMode" | "preferredMaxSameTeam" | "decisionLoggingEnabled" | "recommendationTraceEnabled" | "recommendationTraceGranularity" | "recommendationDisplay">>, config: LeagueConfig = DEFAULT_LEAGUE_CONFIG): DraftState {
+  return { ...state, ...preferences, recommendationDisplay: normalizeRecommendationDisplay(preferences.recommendationDisplay ?? state.recommendationDisplay, config.rounds) };
 }
 
 export function deriveMyRoster(
@@ -191,7 +198,7 @@ export function draftReducer(state: DraftState, action: DraftAction): DraftState
     case "undo-last-pick":
       return undoLastPick(state, action.config);
     case "reset":
-      return { ...createInitialDraftState(), keepPositionPreferenceAfterMyPick: state.keepPositionPreferenceAfterMyPick, teamEcosystemEnabled: state.teamEcosystemEnabled, showTeamContextDetails: state.showTeamContextDetails, teamDiversificationMode: state.teamDiversificationMode, preferredMaxSameTeam: state.preferredMaxSameTeam, decisionLoggingEnabled: state.decisionLoggingEnabled };
+      return { ...createInitialDraftState(), keepPositionPreferenceAfterMyPick: state.keepPositionPreferenceAfterMyPick, teamEcosystemEnabled: state.teamEcosystemEnabled, showTeamContextDetails: state.showTeamContextDetails, teamDiversificationMode: state.teamDiversificationMode, preferredMaxSameTeam: state.preferredMaxSameTeam, decisionLoggingEnabled: state.decisionLoggingEnabled, recommendationTraceEnabled: state.recommendationTraceEnabled, recommendationTraceGranularity: state.recommendationTraceGranularity, recommendationDisplay: state.recommendationDisplay };
     case "replace":
       return action.state;
   }
@@ -202,7 +209,7 @@ export function serializeDraftState(state: DraftState): string {
 }
 
 export function serializeDraftExport(state: DraftState, config: LeagueConfig, createdAt = new Date().toISOString()): string {
-  const envelope: DraftExportEnvelope = { schemaVersion: 2, metadata: { teamCount: config.teamCount, rounds: config.rounds, userDraftSlot: config.userDraftSlot, scoringFingerprint: createScoringFingerprint(config.scoring), rosterFingerprint: createRosterFingerprint(config), createdAt }, draftState: structuredClone(state) };
+  const envelope: DraftExportEnvelope = { schemaVersion: 2, metadata: { teamCount: config.teamCount, rounds: config.rounds, userDraftSlot: config.userDraftSlot, scoringFingerprint: createScoringFingerprint(config.scoring), rosterFingerprint: createRosterFingerprint(config), createdAt }, draftState: structuredClone(state), recommendationTrace: structuredClone(state.recommendationTrace) };
   return JSON.stringify(envelope, null, 2);
 }
 
@@ -235,12 +242,16 @@ export function validateDraftState(input: unknown, config: LeagueConfig = DEFAUL
     preferredMaxSameTeam: input.preferredMaxSameTeam ?? 2,
     decisionLoggingEnabled: input.decisionLoggingEnabled ?? true,
     decisionLog: input.decisionLog ?? [],
+    recommendationTraceEnabled: input.recommendationTraceEnabled ?? true,
+    recommendationTraceGranularity: input.recommendationTraceGranularity ?? "USER_TURNS",
+    recommendationDisplay: normalizeRecommendationDisplay(isRecord(input.recommendationDisplay) ? input.recommendationDisplay as Partial<DraftState["recommendationDisplay"]> : undefined, config.rounds),
+    recommendationTrace: isRecommendationTrace(input.recommendationTrace) ? input.recommendationTrace : createRecommendationTrace(),
   };
   validateStringArray(migrated.manualUnavailablePlayerIds, "manualUnavailablePlayerIds");
   if (new Set(migrated.manualUnavailablePlayerIds).size !== migrated.manualUnavailablePlayerIds.length) throw new Error("manualUnavailablePlayerIds contains duplicates.");
   if (migrated.manualUnavailablePlayerIds.some((id) => playerIds.includes(id))) throw new Error("A manually unavailable player also has a recorded draft pick.");
   if (!isRecord(migrated.positionIntent) || !["Normal", "Prefer", "Filter"].includes(String(migrated.positionIntent.mode)) || !Array.isArray(migrated.positionIntent.positions) || migrated.positionIntent.positions.some((position) => !["G", "F", "C"].includes(String(position)))) throw new Error("positionIntent is invalid.");
-  if (typeof migrated.keepPositionPreferenceAfterMyPick !== "boolean" || typeof migrated.teamEcosystemEnabled !== "boolean" || typeof migrated.showTeamContextDetails !== "boolean" || !["Off", "Strong soft cap", "Strict"].includes(String(migrated.teamDiversificationMode)) || typeof migrated.preferredMaxSameTeam !== "number" || !Number.isInteger(migrated.preferredMaxSameTeam) || migrated.preferredMaxSameTeam < 1 || migrated.preferredMaxSameTeam > 15 || typeof migrated.decisionLoggingEnabled !== "boolean" || !Array.isArray(migrated.decisionLog)) throw new Error("Draft preferences are invalid.");
+  if (typeof migrated.keepPositionPreferenceAfterMyPick !== "boolean" || typeof migrated.teamEcosystemEnabled !== "boolean" || typeof migrated.showTeamContextDetails !== "boolean" || !["Off", "Strong soft cap", "Strict"].includes(String(migrated.teamDiversificationMode)) || typeof migrated.preferredMaxSameTeam !== "number" || !Number.isInteger(migrated.preferredMaxSameTeam) || migrated.preferredMaxSameTeam < 1 || migrated.preferredMaxSameTeam > 15 || typeof migrated.decisionLoggingEnabled !== "boolean" || typeof migrated.recommendationTraceEnabled !== "boolean" || !["USER_TURNS", "EVERY_RECORDED_PICK"].includes(String(migrated.recommendationTraceGranularity)) || !Array.isArray(migrated.decisionLog)) throw new Error("Draft preferences are invalid.");
   for (const item of migrated.decisionLog) if (!isRecord(item) || typeof item.overallPick !== "number" || !Array.isArray(item.topFive) || !Array.isArray(item.rosterPlayerIds)) throw new Error("Decision log is invalid.");
   const expected = stateFromPicks(picks, config, migrated as Partial<DraftState>);
   validateStringArray(input.draftedPlayerIds, "draftedPlayerIds");
@@ -320,4 +331,8 @@ function arraysEqual(left: string[], right: string[]): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRecommendationTrace(value: unknown): value is DraftState["recommendationTrace"] {
+  return isRecord(value) && value.schemaVersion === 1 && Array.isArray(value.snapshots) && typeof value.createdAt === "string" && typeof value.engineVersion === "string";
 }

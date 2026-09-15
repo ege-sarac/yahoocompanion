@@ -6,7 +6,6 @@ import { getMyOverallPicks } from "../src/engine/draftOrder";
 import { applyNbaPositionFallbacks } from "../src/engine/playerOverrides";
 import { replayDraft } from "../src/engine/draftReplay";
 import type { Player } from "../src/types";
-import { readMarketData } from "./marketUtils";
 import { readRoleData } from "./roleDataUtils";
 
 const path = process.argv[2];
@@ -17,7 +16,8 @@ else try {
   const config = { ...structuredClone(DEFAULT_LEAGUE_CONFIG), teamCount: parsed.teamCount, rounds: parsed.rounds, userDraftSlot: Math.min(DEFAULT_LEAGUE_CONFIG.userDraftSlot, parsed.teamCount) };
   const players = applyNbaPositionFallbacks(JSON.parse(readFileSync(resolve("data", "processed", "players.json"), "utf8")) as Player[]);
   const newcomersPath = resolve("data", "manual", "newPlayerOverrides.json");
-  const replay = replayDraft(players, parsed.picks, config, existsSync(newcomersPath) ? JSON.parse(readFileSync(newcomersPath, "utf8")) : [], [], readRoleData(), readMarketData());
+  // This draft can itself be part of the learned market corpus, so replay remains model-only to prevent hindsight leakage.
+  const replay = replayDraft(players, parsed.picks, config, existsSync(newcomersPath) ? JSON.parse(readFileSync(newcomersPath, "utf8")) : [], [], readRoleData());
   const playerById = new Map(players.map((player) => [player.id, player]));
   const userPicks = getMyOverallPicks(config);
   for (const snapshot of replay.snapshots) {
@@ -37,8 +37,9 @@ else try {
     if (selected && selected.expectedGamesProjection.expectedGames < 58 && snapshot.overallPick <= config.teamCount * 5) flags.push("RISKY EARLY PICK");
     if (bestNow?.positionContextComposite.contribution >= bestNow.positionContextComposite.cap * .9 && !bestNow.positionContextComposite.criticalOverride) flags.push("POSITION OVERWEIGHT");
     console.log(`Pick ${snapshot.overallPick}: selected ${playerById.get(snapshot.selectedPlayerId ?? "")?.name ?? snapshot.selectedPlayerId ?? "unknown"}; recommendation rank ${snapshot.selectedRank ?? "n/a"}.`);
-    console.log(`Best Pick-Now: ${bestNow?.player.name ?? "n/a"}; best season value: ${bestSeason?.player.name ?? "n/a"}; market ${bestNow?.marketTiming.marketPickEstimate ?? "n/a"}; expected GP ${bestNow?.expectedGamesProjection.expectedGames ?? "n/a"}. ${flags.join(", ")}`);
+    console.log(`Best Pick-Now: ${bestNow?.player.name ?? "n/a"}; Season VORP ${bestNow?.seasonValue.seasonVorp.toFixed(1) ?? "n/a"}; option ${bestNow?.roleScenarioSummary.optionPremium.toFixed(1) ?? "n/a"}; live wait ${bestNow?.marketTiming.liveWaitCost.toFixed(1) ?? "n/a"}; room turns ${bestNow?.marketTiming.liveRoomSurvivalEvidence ?? "n/a"}; expected GP ${bestNow?.expectedGamesProjection.expectedGames ?? "n/a"}. ${flags.join(", ")}`);
     console.log(`Skipped Top 5 to next turn: ${skippedOutcomes.length ? skippedOutcomes.map(({ entry, outcome }) => `${entry.player.name} ${outcome}`).join("; ") : "none"}.`);
+    console.log(`Top5 Survival to next: ${snapshot.topFiveSurvivalToNextTurn === null ? "not observable" : `${snapshot.topFiveSurvivalToNextTurn}/${snapshot.topFive.length}`}; NextWindowRecall@5/10: ${snapshot.nextWindowRecallAt5 === null ? "not observable" : `${(snapshot.nextWindowRecallAt5 * 100).toFixed(0)}%/${(snapshot.nextWindowRecallAt10! * 100).toFixed(0)}%`}.`);
   }
   console.log(`Draft audit complete: ${replay.snapshots.length} user decisions; ${replay.warnings.length} source warnings.`);
 } catch (error) { console.error("Draft audit failed:", error instanceof Error ? error.message : error); process.exitCode = 1; }

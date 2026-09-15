@@ -75,6 +75,7 @@ export { calculateReplacementLevels, calculateSeasonValue, type SeasonValueCandi
 export { calculateMarketTiming, createRosterFingerprint, createScoringFingerprint, learnMarketProfiles, overallPickToRoundEquivalent, parseMockDraft, roundEquivalentToOverallPick, validateMarketDataSet, validateMarketProfile } from "./marketDraft";
 export { calculatePositionContextComposite, type PositionContextInput } from "./positionContext";
 export { createDecisionSnapshot, upsertDecisionSnapshot } from "./decisionLog";
+export { appendRecommendationTrace, createRecommendationTrace, createRecommendationTraceSnapshot, serializeRecommendationTraceExport, RECOMMENDATION_ENGINE_VERSION, RECOMMENDATION_TRACE_SCHEMA_VERSION } from "./recommendationTrace";
 export { applyDraftValueProjection } from "./draftValueProjection";
 export { replayDraft, type DraftReplayResult, type DraftReplaySnapshot } from "./draftReplay";
 export { analyzeLateSeasonRegime, calculateTeammateDependencies } from "./lateSeasonRegime";

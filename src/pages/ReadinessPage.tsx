@@ -29,7 +29,7 @@ export function ReadinessPage({ players, injuryReport, roleData, marketData }: {
   let draftMatches = true;
   try { validateDraftState(state, config); } catch { draftMatches = false; }
   const currentRound = Math.min(config.rounds, Math.ceil(state.currentOverallPick / config.teamCount));
-  const readinessRanking = rankPlayers({ players, draftedPlayerIds: state.draftedPlayerIds, manualUnavailablePlayerIds: state.manualUnavailablePlayerIds, myRoster: deriveMyRoster(state, players), currentRound, currentOverallPick: state.currentOverallPick, draftPicks: state.picks, leagueConfig: config, newPlayerInputs: newPlayerOverrides, positionIntent: state.positionIntent, teamEcosystemEnabled: state.teamEcosystemEnabled, roleData, teamDiversificationMode: state.teamDiversificationMode, preferredMaxSameTeam: state.preferredMaxSameTeam, marketData });
+  const readinessRanking = rankPlayers({ players, draftedPlayerIds: state.draftedPlayerIds, manualUnavailablePlayerIds: state.manualUnavailablePlayerIds, myRoster: deriveMyRoster(state, players), currentRound, currentOverallPick: state.currentOverallPick, draftPicks: state.picks, leagueConfig: config, newPlayerInputs: newPlayerOverrides, positionIntent: state.positionIntent, teamEcosystemEnabled: state.teamEcosystemEnabled, roleData, teamDiversificationMode: state.teamDiversificationMode, preferredMaxSameTeam: state.preferredMaxSameTeam, marketData, decisionLog: state.decisionLog });
   const averageMarketSample = marketData?.profiles.length ? marketData.profiles.reduce((sum, profile) => sum + (profile.sampleCount ?? 0), 0) / marketData.profiles.length : 0;
   const unavailableConflicts = state.manualUnavailablePlayerIds.filter((id) => state.draftedPlayerIds.includes(id)).length;
 

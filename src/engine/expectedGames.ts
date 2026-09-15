@@ -1,13 +1,13 @@
 import { DRAFT_VALUE_CONFIG } from "../config/draftValueConfig";
-import type { CareerStageProjection, ExpectedGamesProjection, MajorInjuryComebackProjection, Player, Projection } from "../types";
+import type { CareerStageProjection, ExpectedGamesProjection, MajorInjuryComebackProjection, Player, PlayerRoleHistoryRecord, Projection } from "../types";
 
-export function projectMajorInjuryComeback(player: Player, projection: Projection, referenceSeason?: string): MajorInjuryComebackProjection | undefined {
+export function projectMajorInjuryComeback(player: Player, projection: Projection, referenceSeason?: string, roleRecord?: PlayerRoleHistoryRecord): MajorInjuryComebackProjection | undefined {
   const actualSeasons = [...player.historicalStats].sort((a, b) => b.season.localeCompare(a.season));
   const seasons = referenceSeason && actualSeasons[0] && actualSeasons[0].season < referenceSeason ? [{ ...actualSeasons[0], season: referenceSeason, gamesPlayed: 0 }, ...actualSeasons] : actualSeasons;
   const latest = seasons[0], prior = seasons[1];
   const hasKnownRecoverySignal = player.injuryStatus === "Injured" || player.injuryStatus === "Out" || player.injuryStatus === "Returning soon" || Boolean(player.injuryDescription?.trim());
   const eligible = Boolean(latest && prior && hasKnownRecoverySignal && latest.gamesPlayed <= DRAFT_VALUE_CONFIG.comeback.largeMissedPortionGamesMaximum && prior.gamesPlayed >= DRAFT_VALUE_CONFIG.comeback.previousHealthyGamesMinimum);
-  if (!eligible) return undefined;
+  if (!eligible || hasMeaningfulReturnedSample(player, roleRecord)) return undefined;
   const ageRisk = (player.age ?? 0) >= DRAFT_VALUE_CONFIG.career.lateCareerAge ? DRAFT_VALUE_CONFIG.comeback.lateCareerRisk : 0;
   const statusRisk = player.injuryStatus === "Injured" || player.injuryStatus === "Out" ? DRAFT_VALUE_CONFIG.comeback.injuredStatusRisk : DRAFT_VALUE_CONFIG.comeback.returningStatusRisk;
   const comebackRisk = clamp(DRAFT_VALUE_CONFIG.comeback.baseRisk + ageRisk + statusRisk, 0, .9);
@@ -22,7 +22,7 @@ export function projectMajorInjuryComeback(player: Player, projection: Projectio
   };
 }
 
-export function projectExpectedGames(player: Player, projection: Projection, career: CareerStageProjection, referenceSeason?: string): ExpectedGamesProjection {
+export function projectExpectedGames(player: Player, projection: Projection, career: CareerStageProjection, referenceSeason?: string, roleRecord?: PlayerRoleHistoryRecord): ExpectedGamesProjection {
   const config = DRAFT_VALUE_CONFIG.expectedGames;
   const actualSeasons = [...player.historicalStats].sort((a, b) => b.season.localeCompare(a.season));
   const seasons = (referenceSeason && actualSeasons[0] && actualSeasons[0].season < referenceSeason ? [{ ...actualSeasons[0], season: referenceSeason, gamesPlayed: 0 }, ...actualSeasons] : actualSeasons).slice(0, config.seasonWeights.length);
@@ -38,7 +38,7 @@ export function projectExpectedGames(player: Player, projection: Projection, car
   expected -= config.currentStatusMissedGames[status];
   const historicallyFragile = lowCount >= 2 || expected < config.leagueBaseline - 10;
   if (status === "Unknown" && historicallyFragile) expected -= config.unknownFragilePenalty;
-  const comeback = projectMajorInjuryComeback(player, projection, referenceSeason);
+  const comeback = projectMajorInjuryComeback(player, projection, referenceSeason, roleRecord);
   if (comeback) expected = comeback.expectedGames;
   expected = clamp(expected, config.minimumGames, config.maximumGames);
   const sampleWeakness = 1 - Math.min(1, sampleGames / (config.priorStrengthGames * 2));
@@ -53,6 +53,13 @@ export function projectExpectedGames(player: Player, projection: Projection, car
   if (status === "Injured" || status === "Out") reasons.push(player.expectedReturnDate ? "Current injury timeline reduces expected games." : "Current injury has no verified return date, widening the range.");
   if (comeback) reasons.push(...comeback.reasons);
   return { expectedGamesLow: round(low), expectedGames: round(expected), expectedGamesHigh: round(high), availabilityConfidence: confidence, availabilityRiskLabel: expected < 59 || range > 18 ? "HIGH RISK" : expected < 69 || range > 13 ? "MODERATE" : "STABLE", currentHealthVerified: Boolean(player.injuryStatus && player.injuryStatus !== "Unknown"), majorInjuryComeback: comeback, reasons };
+}
+
+function hasMeaningfulReturnedSample(player: Player, roleRecord?: PlayerRoleHistoryRecord): boolean {
+  if (player.injuryStatus === "Out" || player.injuryStatus === "Injured") return false;
+  const games = roleRecord?.latestSeasonGames ?? [];
+  const meaningful = games.filter((game) => game.minutes >= DRAFT_VALUE_CONFIG.comeback.returnedSampleMinimumMinutes);
+  return meaningful.length >= DRAFT_VALUE_CONFIG.comeback.returnedSampleMinimumGames;
 }
 
 function normalizeGames(games: number, season?: string): number { const seasonLength = season ? DRAFT_VALUE_CONFIG.historicalSeasonLengths[season] ?? 82 : 82; return clamp(games / seasonLength * 82, 0, 82); }

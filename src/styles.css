@@ -442,6 +442,54 @@ main {
   font-weight: 700;
 }
 
+.late-alternatives {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, .18);
+}
+
+.late-alternatives > p {
+  margin: 0 0 8px;
+  color: var(--lime);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.late-alternatives > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.late-alternatives article {
+  min-width: 0;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, .96);
+  border-radius: 8px;
+}
+
+.late-alternatives span,
+.late-alternatives small {
+  display: block;
+  color: var(--muted);
+  font-size: .7rem;
+}
+
+.late-alternatives span {
+  margin-bottom: 3px;
+  color: var(--green);
+  font-weight: 700;
+}
+
+.late-alternatives strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .injury-chip {
   align-self: flex-start;
   margin-bottom: 10px;

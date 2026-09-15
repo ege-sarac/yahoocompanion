@@ -76,6 +76,7 @@ export interface MarketPlayerProfile {
   updatedAt?: string;
   source?: string;
   observedRoundEquivalents?: number[];
+  observedOverallPicks?: number[];
   rightCensoredRoundEquivalents?: number[];
 }
 
@@ -105,6 +106,37 @@ export interface MarketTimingProjection {
   draftNowUrgency: number;
   waitValue: number;
   reachCost: number;
+  marketEvidenceLabel: string;
+  marketEvidenceLevel: "NONE" | "VERY_LOW" | "LOW" | "MEDIUM" | "HIGH";
+  conditionalSurvival: boolean;
+  liveRoomSurvivalEvidence: number;
+  liveRoomConfidence: number;
+  liveWaitCost: number;
+}
+
+export type RoleScenarioLabel = "LOW" | "BASE" | "HIGH";
+export interface RoleOutcomeScenario {
+  label: RoleScenarioLabel;
+  probability: number;
+  healthyGameMPG: number;
+  projectedFantasyPointsPerMinute: number;
+  projectedFantasyPointsPerGame: number;
+  expectedGames: number;
+  seasonVorp: number;
+}
+
+export interface RoleScenarioSummary {
+  roleSustainability: number;
+  scenarios: RoleOutcomeScenario[];
+  meanSeasonVorp: number;
+  optionAdjustedSeasonVorp: number;
+  optionPremium: number;
+  optionScoreAdjustment: number;
+  credibleUpsideSurplus: number;
+  credibleDownsideGap: number;
+  upsideLabel: "LOW" | "MEDIUM" | "HIGH";
+  minutesOutsideRoleRange: boolean;
+  reasons: string[];
 }
 
 export interface PositionContextBreakdown {
@@ -130,6 +162,13 @@ export interface DraftDecisionPlayerSnapshot {
   seasonVorp: number;
   marketPickEstimate: number | null;
   survivalEstimate: number;
+  meanSeasonVorp?: number;
+  optionAdjustedSeasonVorp?: number;
+  roleScenarioSummary?: string;
+  marketConfidence?: number;
+  conditionalSurvival?: boolean;
+  liveRoomSurvivalEvidence?: number;
+  waitAdjustment?: number;
   positionalNeed: string;
   reasons: string[];
 }
@@ -155,6 +194,7 @@ export interface DraftExportEnvelope {
   schemaVersion: 2;
   metadata: DraftExportMetadata;
   draftState: DraftState;
+  recommendationTrace?: import("./recommendationTrace").RecommendationTrace;
 }
 
 export interface MockDraftRecord {

@@ -28,7 +28,7 @@ const STORAGE_KEY = "yahoo-companion:draft-state:v1";
 
 interface DraftContextValue {
   state: DraftState;
-  draftPlayer: (playerId: string, decisionSnapshot?: DraftDecisionSnapshot) => void;
+  draftPlayer: (playerId: string, decisionSnapshot?: DraftDecisionSnapshot, traceSnapshot?: DraftState["recommendationTrace"]["snapshots"][number]) => void;
   undoLastPick: () => void;
   resetDraft: () => void;
   exportDraft: () => string;
@@ -38,7 +38,7 @@ interface DraftContextValue {
   markUnavailable: (playerId: string) => void;
   restoreAvailability: (playerId: string) => void;
   setPositionIntent: (intent: PositionIntent) => void;
-  updatePreferences: (preferences: Partial<Pick<DraftState, "keepPositionPreferenceAfterMyPick" | "teamEcosystemEnabled" | "showTeamContextDetails" | "teamDiversificationMode" | "preferredMaxSameTeam" | "decisionLoggingEnabled">>) => void;
+  updatePreferences: (preferences: Partial<Pick<DraftState, "keepPositionPreferenceAfterMyPick" | "teamEcosystemEnabled" | "showTeamContextDetails" | "teamDiversificationMode" | "preferredMaxSameTeam" | "decisionLoggingEnabled" | "recommendationTraceEnabled" | "recommendationTraceGranularity" | "recommendationDisplay">>) => void;
 }
 
 const DraftContext = createContext<DraftContextValue | null>(null);
@@ -70,8 +70,8 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(STORAGE_KEY, serializeDraftState(state));
   }, [state]);
 
-  const draftPlayer = useCallback((playerId: string, decisionSnapshot?: DraftDecisionSnapshot) => {
-    const nextState = applyDraftPick(state, playerId, config, decisionSnapshot);
+  const draftPlayer = useCallback((playerId: string, decisionSnapshot?: DraftDecisionSnapshot, traceSnapshot?: DraftState["recommendationTrace"]["snapshots"][number]) => {
+    const nextState = applyDraftPick(state, playerId, config, decisionSnapshot, traceSnapshot);
     dispatch({ type: "replace", state: nextState });
   }, [config, state]);
   const undoLastPick = useCallback(() => {
@@ -92,7 +92,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   const markUnavailable = useCallback((playerId: string) => dispatch({ type: "replace", state: markPlayerUnavailable(state, playerId) }), [state]);
   const restoreAvailability = useCallback((playerId: string) => dispatch({ type: "replace", state: restorePlayerAvailability(state, playerId) }), [state]);
   const setPositionIntent = useCallback((intent: PositionIntent) => dispatch({ type: "replace", state: applyPositionIntent(state, intent) }), [state]);
-  const updatePreferences = useCallback((preferences: Partial<Pick<DraftState, "keepPositionPreferenceAfterMyPick" | "teamEcosystemEnabled" | "showTeamContextDetails" | "teamDiversificationMode" | "preferredMaxSameTeam" | "decisionLoggingEnabled">>) => dispatch({ type: "replace", state: applyDraftPreferences(state, preferences) }), [state]);
+  const updatePreferences = useCallback((preferences: Partial<Pick<DraftState, "keepPositionPreferenceAfterMyPick" | "teamEcosystemEnabled" | "showTeamContextDetails" | "teamDiversificationMode" | "preferredMaxSameTeam" | "decisionLoggingEnabled" | "recommendationTraceEnabled" | "recommendationTraceGranularity" | "recommendationDisplay">>) => dispatch({ type: "replace", state: applyDraftPreferences(state, preferences, config) }), [config, state]);
 
   const contextValue = useMemo(
     () => ({

@@ -1,9 +1,10 @@
-export type { DraftPick, DraftState, PositionIntent, PositionIntentMode, TeamDiversificationMode } from "./draft";
+export type { DraftPick, DraftState, PositionIntent, PositionIntentMode, TeamDiversificationMode, RecommendationDisplayConfig, RecommendationExpansionMode, RecommendationTraceGranularity } from "./draft";
+export type { RecommendationTrace, RecommendationTraceSnapshot, RecommendationCandidateTrace, RecommendationCompactCandidateTrace, RecommendationCarryForwardCandidate, RecommendationRankMovement, RecommendationTraceOutcome, RecommendationTraceExport } from "./recommendationTrace";
 export type { CandidateFeasibility, PositionNeedUrgency, PositionUrgencyLabel, RosterFeasibility } from "./feasibility";
 export type { PlayerRoleProfile, TeamContextSummary, TeamEcosystemResult, TeamRoleDebug } from "./teamContext";
 export type { LateSeasonRegime, LateSeasonRegimeType, PlayerRoleDataSet, PlayerRoleGame, PlayerRoleHistoryRecord, PlayerRoleMetrics, RoleContextSummary, RoleDataSourceFlag, RoleWindowSummary, TeamGameParticipation, TeammateDependency } from "./role";
 export type { DraftDayBackup } from "./backup";
-export type { CareerStage, CareerTrend, CareerStageProjection, CurrentRoleAssessment, DraftDecisionPlayerSnapshot, DraftDecisionSnapshot, DraftExportEnvelope, DraftExportMetadata, ExpectedGamesProjection, MajorInjuryComebackProjection, MarketDataSet, MarketFormat, MarketImportOptions, MarketPlayerProfile, MarketTimingProjection, MockDraftRecord, PositionContextBreakdown, ReplacementLevelProfile, SeasonValueProjection, SurvivalSource } from "./draftValue";
+export type { CareerStage, CareerTrend, CareerStageProjection, CurrentRoleAssessment, DraftDecisionPlayerSnapshot, DraftDecisionSnapshot, DraftExportEnvelope, DraftExportMetadata, ExpectedGamesProjection, MajorInjuryComebackProjection, MarketDataSet, MarketFormat, MarketImportOptions, MarketPlayerProfile, MarketTimingProjection, MockDraftRecord, PositionContextBreakdown, ReplacementLevelProfile, RoleOutcomeScenario, RoleScenarioLabel, RoleScenarioSummary, SeasonValueProjection, SurvivalSource } from "./draftValue";
 export type { DisplayRosterSlot, LeagueConfig, RosterSettings, RosterSlot, ScoringSettings, StoredLeagueConfig } from "./league";
 export type {
   DataSourceMetadata,
@@ -16,6 +17,8 @@ export type {
 } from "./player";
 export type {
   PlayerRecommendation,
+  RecommendationScoreBreakdown,
+  AlternativeRecommendation,
   PositionScarcitySummary,
   PositionRunSummary,
   ProjectionMetrics,

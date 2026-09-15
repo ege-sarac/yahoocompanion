@@ -23,7 +23,7 @@ export const ROLE_PROJECTION_CONFIG = {
     reboundsPer36ChangeScale: 4,
     hotShootingThreshold: 6,
   },
-  absence: { minimumGamesEachState: 5, maximumCompetitors: 3, smallSampleShrinkage: 0.35 },
+  absence: { minimumGamesEachState: 8, maximumCompetitors: 3, smallSampleShrinkage: 0.35 },
   roleSecurity: { confidence: 0.4, minutes: 0.25, sample: 0.2, stability: 0.15 },
   totalRoleAdjustmentCap: 0.1,
   teamDiversification: {

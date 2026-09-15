@@ -55,9 +55,18 @@ export function SettingsPage() {
         <label><input checked={state.teamEcosystemEnabled} onChange={(event) => updatePreferences({ teamEcosystemEnabled: event.target.checked })} type="checkbox" /> Team ecosystem adjustments</label>
         <label><input checked={state.showTeamContextDetails} onChange={(event) => updatePreferences({ showTeamContextDetails: event.target.checked })} type="checkbox" /> Show team-context details</label>
         <label><input checked={state.decisionLoggingEnabled} onChange={(event) => updatePreferences({ decisionLoggingEnabled: event.target.checked })} type="checkbox" /> Include compact recommendation snapshots in future draft exports</label>
+        <label><input checked={state.recommendationTraceEnabled} onChange={(event) => updatePreferences({ recommendationTraceEnabled: event.target.checked })} type="checkbox" /> Record forensic recommendation trace</label>
+        <label>Trace granularity<select value={state.recommendationTraceGranularity} onChange={(event) => updatePreferences({ recommendationTraceGranularity: event.target.value as typeof state.recommendationTraceGranularity })}><option value="USER_TURNS">User turns</option><option value="EVERY_RECORDED_PICK">Every recorded pick</option></select></label>
         <label>Team diversification<select value={state.teamDiversificationMode} onChange={(event) => updatePreferences({ teamDiversificationMode: event.target.value as typeof state.teamDiversificationMode })}><option>Off</option><option>Strong soft cap</option><option>Strict</option></select></label>
         <label>Preferred max from one NBA team<input min={1} max={15} type="number" value={state.preferredMaxSameTeam} onChange={(event) => updatePreferences({ preferredMaxSameTeam: Math.max(1, Math.min(15, Number(event.target.value) || 1)) })} /></label>
       </div></fieldset>
+      <fieldset className="settings-group"><legend>Recommendation display</legend><div className="settings-grid">
+        <NumberField label="Primary recommendations" value={state.recommendationDisplay.primaryCount} onChange={(value) => updatePreferences({ recommendationDisplay: { ...state.recommendationDisplay, primaryCount: value } })} />
+        <NumberField label="Expanded total" value={state.recommendationDisplay.expandedTotalCount} onChange={(value) => updatePreferences({ recommendationDisplay: { ...state.recommendationDisplay, expandedTotalCount: value } })} />
+        <label>Expand by<select value={state.recommendationDisplay.expansionMode} onChange={(event) => updatePreferences({ recommendationDisplay: { ...state.recommendationDisplay, expansionMode: event.target.value as typeof state.recommendationDisplay.expansionMode } })}><option value="DRAFT_PROGRESS">Draft progress</option><option value="ROUND">Round</option></select></label>
+        <NumberField label="Expand at progress" step={.05} value={state.recommendationDisplay.expandAtProgress} onChange={(value) => updatePreferences({ recommendationDisplay: { ...state.recommendationDisplay, expandAtProgress: value } })} />
+        <NumberField label="Expand at round" value={state.recommendationDisplay.expandAtRound} onChange={(value) => updatePreferences({ recommendationDisplay: { ...state.recommendationDisplay, expandAtRound: value } })} />
+      </div><p className="settings-summary">Default: Top 5, then 9 total recommendations at 60% draft progress. Values are safely bounded and saved locally.</p></fieldset>
       {message && <p className="form-message" role="status">{message}</p>}
       <div className="settings-actions"><button className="primary-button" type="submit">Save and apply</button><button type="button" onClick={restore}>Restore YahooCompanion defaults</button></div>
     </form>

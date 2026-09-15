@@ -21,6 +21,8 @@ import {
   matchesPlayerName,
   rankPlayers,
   createDecisionSnapshot,
+  createRecommendationTraceSnapshot,
+  serializeRecommendationTraceExport,
 } from "../engine";
 import type { MarketDataSet, NewPlayerProjectionInput, Player, PlayerRoleDataSet } from "../types";
 
@@ -90,9 +92,12 @@ export function DraftPage({ players, dataSource, newPlayerInputs, roleData, mark
       teamDiversificationMode: state.teamDiversificationMode,
       preferredMaxSameTeam: state.preferredMaxSameTeam,
       marketData,
+      decisionLog: state.decisionLog,
+      recommendationDisplay: state.recommendationDisplay,
     });
-  }, [config, currentRound, dataSource, marketData, myRoster, newPlayerInputs, players, roleData, state.currentOverallPick, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.preferredMaxSameTeam, state.teamDiversificationMode, state.teamEcosystemEnabled]);
+  }, [config, currentRound, dataSource, marketData, myRoster, newPlayerInputs, players, roleData, state.currentOverallPick, state.decisionLog, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.preferredMaxSameTeam, state.recommendationDisplay, state.teamDiversificationMode, state.teamEcosystemEnabled]);
   const topDraftRecommendations = draftRecommendationResult?.topRecommendations ?? [];
+  const recommendationRankById = useMemo(() => new Map((draftRecommendationResult?.recommendations ?? []).map((recommendation, index) => [recommendation.player.id, index + 1])), [draftRecommendationResult]);
 
   function selectPlayer(player: Player) {
     try {
@@ -100,7 +105,10 @@ export function DraftPage({ players, dataSource, newPlayerInputs, roleData, mark
       const decisionSnapshot = currentInfo?.isMyTeam && draftRecommendationResult && state.decisionLoggingEnabled
         ? createDecisionSnapshot(state.currentOverallPick, state.myPlayerIds, state.positionIntent, draftRecommendationResult.topRecommendations)
         : undefined;
-      draftPlayer(player.id, decisionSnapshot);
+      const traceSnapshot = draftRecommendationResult && state.recommendationTraceEnabled && (currentInfo?.isMyTeam || state.recommendationTraceGranularity === "EVERY_RECORDED_PICK")
+        ? createRecommendationTraceSnapshot(state, config, draftRecommendationResult, player.id, currentInfo?.isMyTeam ? "FULL_USER_TURN" : "LIGHT_PICK")
+        : undefined;
+      draftPlayer(player.id, decisionSnapshot, traceSnapshot);
       setQuery("");
       setHighlightedIndex(0);
       setMessage(completionRisk ? "Pick recorded. Warning: this selection creates roster completion risk under the configured eligibility." : null);
@@ -153,12 +161,25 @@ export function DraftPage({ players, dataSource, newPlayerInputs, roleData, mark
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `yahoo-companion-draft-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.download = `yahoo-companion-draft-${localTimestamp()}.json`;
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     setMessage("Draft exported.");
+  }
+
+  function downloadRecommendationTrace() {
+    const blob = new Blob([serializeRecommendationTraceExport(state.recommendationTrace, config, state)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `yahoo-companion-recommendation-trace-${localTimestamp()}.json`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setMessage("Recommendation trace exported.");
   }
 
   async function handleImport(event: ChangeEvent<HTMLInputElement>) {
@@ -220,21 +241,23 @@ export function DraftPage({ players, dataSource, newPlayerInputs, roleData, mark
           <div className="on-clock-heading">
             <div>
               <p className="eyebrow">{currentInfo?.isMyTeam ? "On the clock" : "Planning ahead"}</p>
-              <h3 id="on-clock-heading">Live Top 5</h3>
+              {/* Live Top 5 is the default; this count follows the saved display configuration. */}
+              <h3 id="on-clock-heading">Live Top {draftRecommendationResult.recommendationDisplay.primaryCount}</h3>
             </div>
             <a href="#/recommendations">View full ranking</a>
           </div>
           {topDraftRecommendations.length === 0 ? <div className="compact-empty-state"><p>No recommendation matches the current filter.</p></div> : <div className="on-clock-grid">
             {topDraftRecommendations.map((recommendation, index) => (
               <article key={recommendation.player.id}>
-                <span className="on-clock-rank">#{index + 1}</span>
+                <span className="on-clock-rank">#{recommendationRankById.get(recommendation.player.id) ?? index + 1}</span>
                 <strong>{recommendation.player.name}</strong>
                 <small>
                   {recommendation.player.yahooPositions.join(" / ") || "Eligibility missing"}
                   {" | "}{recommendation.projection.projectedFantasyPointsPerGame.toFixed(1)} FP/G
                 </small>
                 <small>Expected games {recommendation.expectedGamesProjection.expectedGames.toFixed(0)} · {recommendation.expectedGamesProjection.availabilityRiskLabel} · Season value {recommendation.seasonValue.availabilityAdjustedFantasyPointsEquivalent.toFixed(1)}</small>
-                <small>{recommendation.marketTiming.marketRoundLow === null ? "Market unavailable" : `Market R${recommendation.marketTiming.marketRoundLow.toFixed(1)}-${recommendation.marketTiming.marketRoundHigh!.toFixed(1)}`} · {recommendation.survivalLabel}</small>
+                <small>{recommendation.marketTiming.marketRoundLow === null ? recommendation.marketTiming.marketEvidenceLabel : `Market R${recommendation.marketTiming.marketRoundLow.toFixed(1)}-${recommendation.marketTiming.marketRoundHigh!.toFixed(1)}`} · {recommendation.survivalLabel}{recommendation.marketTiming.liveWaitCost > 0 ? ` · wait ${recommendation.marketTiming.liveWaitCost.toFixed(1)}` : ""}</small>
+                <small>Upside: {recommendation.roleScenarioSummary.upsideLabel.toLowerCase()} · role sustainability {(recommendation.roleScenarioSummary.roleSustainability * 100).toFixed(0)}%</small>
                 <p className="on-clock-reasons">{(recommendation.explanations.length ? recommendation.explanations : ["Model favors the projected value at this pick."]).slice(0, 2).map((reason) => <span key={reason}>{reason}</span>)}</p>
                 {recommendation.teamConcentrationWarning && <small className="team-context-inline">{recommendation.teamConcentrationWarning}</small>}
                 {recommendation.expectedGamesProjection.majorInjuryComeback && <span className="injury-chip">Major-injury comeback · high uncertainty</span>}
@@ -253,6 +276,19 @@ export function DraftPage({ players, dataSource, newPlayerInputs, roleData, mark
               </article>
             ))}
           </div>}
+          {(draftRecommendationResult.displayExpanded && draftRecommendationResult.alternativeRecommendations.length > 0) && (
+            <div className="late-alternatives" aria-label="More draft options">
+              <p>More options</p>
+              <div>
+                {draftRecommendationResult.alternativeRecommendations.map(({ recommendation }) => (
+                  <article key={recommendation.player.id}>
+                    <strong>{recommendation.player.name}</strong>
+                    <small>#{recommendationRankById.get(recommendation.player.id) ?? "—"} · {recommendation.player.yahooPositions.join(" / ") || "Eligibility missing"} · {recommendation.projection.projectedFantasyPointsPerGame.toFixed(1)} FP/G · Score {recommendation.finalScore.toFixed(1)}</small>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -301,6 +337,7 @@ export function DraftPage({ players, dataSource, newPlayerInputs, roleData, mark
             <button disabled={state.picks.length === 0} onClick={undoLastPick} type="button">Undo Last Pick</button>
             <button className="danger-button" disabled={state.picks.length === 0} onClick={handleReset} type="button">Reset Draft</button>
             <button onClick={downloadDraft} type="button">Export Draft</button>
+            <button disabled={state.recommendationTrace.snapshots.length === 0} onClick={downloadRecommendationTrace} type="button">Export Recommendation Trace</button>
             <button onClick={() => importInputRef.current?.click()} type="button">Import Draft</button>
             <input accept="application/json,.json" className="visually-hidden" onChange={handleImport} ref={importInputRef} type="file" />
           </div>
@@ -324,6 +361,11 @@ export function DraftPage({ players, dataSource, newPlayerInputs, roleData, mark
       <DraftRepair players={players} />
     </section>
   );
+}
+
+function localTimestamp(date = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 
 function DraftStat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {

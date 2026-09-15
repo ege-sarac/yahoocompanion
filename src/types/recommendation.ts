@@ -1,4 +1,5 @@
 import type { Player, Projection, YahooPosition } from "./player";
+import type { TeammateDependency } from "./role";
 import type {
   NewPlayerProjectionDetails,
   NewPlayerProjectionInput,
@@ -8,7 +9,7 @@ import type { CandidateFeasibility, PositionNeedUrgency, RosterFeasibility } fro
 import type { PositionIntent } from "./draft";
 import type { TeamContextSummary, TeamRoleDebug } from "./teamContext";
 import type { RoleContextSummary } from "./role";
-import type { CareerStageProjection, CurrentRoleAssessment, ExpectedGamesProjection, MarketTimingProjection, PositionContextBreakdown, ReplacementLevelProfile, SeasonValueProjection } from "./draftValue";
+import type { CareerStageProjection, CurrentRoleAssessment, ExpectedGamesProjection, MarketTimingProjection, PositionContextBreakdown, ReplacementLevelProfile, RoleScenarioSummary, SeasonValueProjection } from "./draftValue";
 
 export interface ProjectionMetrics {
   projection: Projection;
@@ -110,8 +111,34 @@ export interface PlayerRecommendation extends ProjectionMetrics {
   seasonValue: SeasonValueProjection;
   marketTiming: MarketTimingProjection;
   positionContextComposite: PositionContextBreakdown;
+  roleScenarioSummary: RoleScenarioSummary;
   modelValueRank: number;
   marketCostRank: number | null;
+  availabilityDownsideGap: number;
+  availabilityTailPenalty: number;
+  scoreBreakdown: RecommendationScoreBreakdown;
+  diagnosticInputs: { baseProjection: Projection; roleProjection: Projection; teammateDependencies: TeammateDependency[]; roleDataGeneratedAt: string | null; minutesOutsideRoleRange: boolean; marketExactPickCount: number; marketRightCensoredCount: number };
+}
+
+export interface RecommendationScoreBreakdown {
+  weightedComponents: RecommendationContributions;
+  optionValue: number;
+  availabilityTail: number;
+  positionContext: number;
+  marketUrgency: number;
+  historicalWait: number;
+  liveWait: number;
+  reach: number;
+  teamDiversification: number;
+  manualPositionIntent: number;
+  rosterRisk: number;
+  preAdjustmentScore: number;
+  finalDraftScore: number;
+  reconciliationResidual: number;
+}
+
+export interface AlternativeRecommendation {
+  recommendation: PlayerRecommendation;
 }
 
 export interface RecommendationResult {
@@ -121,6 +148,9 @@ export interface RecommendationResult {
   newPlayerModelCount: number;
   missingEligibilityCount: number;
   topRecommendations: PlayerRecommendation[];
+  alternativeRecommendations: AlternativeRecommendation[];
+  recommendationDisplay: import("./draft").RecommendationDisplayConfig;
+  displayExpanded: boolean;
   recentRuns: Record<YahooPosition, PositionRunSummary>;
   draftProgress: number;
   rosterFeasibility: RosterFeasibility;
@@ -135,6 +165,8 @@ export interface RecommendationResult {
   teamDiversificationFilteredCount: number;
   replacementLevels: ReplacementLevelProfile;
   marketProfilesLoaded: number;
+  marketCorpusDraftCount: number;
+  marketProfileVersion: string | null;
   matchingMarketProfiles: number;
-  teamMinutesDiagnostics: { teamsProcessed: number; teamsOutsideTolerance: number; capViolations: number; maximumTotalMinutes: number };
+  teamMinutesDiagnostics: { teamsProcessed: number; teamsOutsideTolerance: number; capViolations: number; maximumTotalMinutes: number; minutesOutsideRoleRange: number };
 }

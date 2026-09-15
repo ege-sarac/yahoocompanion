@@ -108,7 +108,7 @@ export function projectPlayerProduction(
     | "projectedTurnovers"
   >;
 
-  const bonusEstimates = estimateBonusCounts(
+  const bonusEstimates = estimateProjectedBonusCounts(
     projectedStats,
     projectedGames,
   );
@@ -381,7 +381,7 @@ function estimateProjectedMinutes(seasons: WeightedSeason[]): number {
   );
 }
 
-function estimateBonusCounts(
+export function estimateProjectedBonusCounts(
   projectedStats: Pick<
     Projection,
     | "projectedPoints"

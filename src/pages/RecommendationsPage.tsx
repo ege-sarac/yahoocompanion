@@ -79,8 +79,9 @@ export function RecommendationsPage({
         teamDiversificationMode: state.teamDiversificationMode,
         preferredMaxSameTeam: state.preferredMaxSameTeam,
         marketData,
+        decisionLog: state.decisionLog,
       }),
-    [config, currentRound, dataSource, marketData, myRoster, newPlayerInputs, players, roleData, state.currentOverallPick, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.preferredMaxSameTeam, state.teamDiversificationMode, state.teamEcosystemEnabled],
+    [config, currentRound, dataSource, marketData, myRoster, newPlayerInputs, players, roleData, state.currentOverallPick, state.decisionLog, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.preferredMaxSameTeam, state.teamDiversificationMode, state.teamEcosystemEnabled],
   );
   const topRecommendations = result.topRecommendations;
   const stage = getRecommendationStage(currentRound, config);
@@ -260,7 +261,7 @@ export function RecommendationsPage({
                     </td>
                     <td>{recommendation.expectedGamesProjection.expectedGames.toFixed(1)}<small className="return-confidence-inline">{recommendation.expectedGamesProjection.expectedGamesLow.toFixed(0)}-{recommendation.expectedGamesProjection.expectedGamesHigh.toFixed(0)} · {recommendation.expectedGamesProjection.availabilityRiskLabel}</small></td>
                     <td>{recommendation.seasonValue.availabilityAdjustedFantasyPointsEquivalent.toFixed(1)}<small className="return-confidence-inline">VORP {recommendation.seasonValue.seasonVorp.toFixed(0)} · replacement {recommendation.seasonValue.replacementFantasyPointsPerGame.toFixed(1)}</small></td>
-                    <td>{recommendation.marketTiming.marketPickEstimate === null ? "-" : `~${recommendation.marketTiming.marketPickEstimate}`}<small className="return-confidence-inline">{recommendation.marketTiming.valueLabel} · {recommendation.marketTiming.survivalSource}</small></td>
+                    <td>{recommendation.marketTiming.marketPickEstimate === null ? "-" : `~${recommendation.marketTiming.marketPickEstimate}`}<small className="return-confidence-inline">{recommendation.marketTiming.marketPickEstimate === null ? recommendation.marketTiming.marketEvidenceLabel : `${recommendation.marketTiming.valueLabel} · ${recommendation.marketTiming.marketEvidenceLevel}`}</small></td>
                     <td>{recommendation.projection.projectedMinutes.toFixed(1)}<small className="return-confidence-inline">{formatRange(recommendation.projection.projectedMinutesLow, recommendation.projection.projectedMinutesHigh)}</small></td>
                     <td>
                       {formatPercent(recommendation.historicalAvailabilityRisk)}

@@ -1,6 +1,7 @@
 import { DEFAULT_LEAGUE_CONFIG } from "../config/leagueConfig";
 import type { LeagueConfig, Player, PlayerRoleHistoryRecord, Projection, ProjectionMetrics } from "../types";
 import { calculateFantasyPoints } from "./fantasyPoints";
+import { estimateProjectedBonusCounts } from "./projectionModel";
 import { analyzeCareerStage } from "./careerStage";
 import { projectExpectedGames } from "./expectedGames";
 import { assessCurrentRole } from "./roleSecurity";
@@ -10,7 +11,7 @@ import type { ExpectedGamesProjection } from "../types";
 export function applyDraftValueProjection(player: Player, metrics: ProjectionMetrics, record?: PlayerRoleHistoryRecord, config: LeagueConfig = DEFAULT_LEAGUE_CONFIG, referenceSeason?: string): ProjectionMetrics {
   const career = analyzeCareerStage(player, record, config);
   let projection = scaleMinutes(metrics.projection, career.minutesAdjustment, config);
-  const preliminaryExpected = player.historicalStats.length ? projectExpectedGames(player, projection, career, referenceSeason) : projectNewcomerExpectedGames(player, projection, metrics.modelConfidence);
+  const preliminaryExpected = player.historicalStats.length ? projectExpectedGames(player, projection, career, referenceSeason, record) : projectNewcomerExpectedGames(player, projection, metrics.modelConfidence);
   if (preliminaryExpected.majorInjuryComeback) {
     const target = preliminaryExpected.majorInjuryComeback.expectedMinutes;
     projection = scaleMinutes(projection, projection.projectedMinutes > 0 ? target / projection.projectedMinutes - 1 : 0, config);
@@ -23,7 +24,7 @@ export function applyDraftValueProjection(player: Player, metrics: ProjectionMet
     const target = projection.projectedMinutes * .35 + role.latestTeamStintMinutes * .65;
     projection = scaleMinutes(projection, target / projection.projectedMinutes - 1, config);
   }
-  const expected = player.historicalStats.length ? projectExpectedGames(player, projection, career, referenceSeason) : projectNewcomerExpectedGames(player, projection, metrics.modelConfidence);
+  const expected = player.historicalStats.length ? projectExpectedGames(player, projection, career, referenceSeason, record) : projectNewcomerExpectedGames(player, projection, metrics.modelConfidence);
   projection.projectedGames = expected.expectedGames;
   const finalMetrics = { ...preliminaryMetrics, projection, expectedGamesProjection: expected };
   return { ...finalMetrics, roleAssessment: assessCurrentRole(player, finalMetrics, career, record), projectedFantasyPointsPerSeason: projection.projectedFantasyPointsPerGame * expected.expectedGames, availabilityAdjustedFantasyPoints: projection.projectedFantasyPointsPerGame * expected.expectedGames };
@@ -41,6 +42,7 @@ function scaleMinutes(base: Projection, adjustment: number, config: LeagueConfig
   if (Math.abs(adjustment) < 1e-9) return { ...base };
   const scale = Math.max(.5, Math.min(1.15, 1 + adjustment));
   const projection: Projection = { ...base, projectedMinutes: base.projectedMinutes * scale, projectedMinutesLow: (base.projectedMinutesLow ?? base.projectedMinutes) * scale, projectedMinutesHigh: (base.projectedMinutesHigh ?? base.projectedMinutes) * scale, projectedPoints: base.projectedPoints * scale, projectedOffensiveRebounds: base.projectedOffensiveRebounds * scale, projectedDefensiveRebounds: base.projectedDefensiveRebounds * scale, projectedAssists: base.projectedAssists * scale, projectedSteals: base.projectedSteals * scale, projectedBlocks: base.projectedBlocks * scale, projectedTurnovers: base.projectedTurnovers * scale };
+  Object.assign(projection, estimateProjectedBonusCounts(projection, projection.projectedGames));
   projection.projectedFantasyPointsPerGame = calculateFantasyPoints({ points: projection.projectedPoints, offensiveRebounds: projection.projectedOffensiveRebounds, defensiveRebounds: projection.projectedDefensiveRebounds, assists: projection.projectedAssists, steals: projection.projectedSteals, blocks: projection.projectedBlocks, turnovers: projection.projectedTurnovers, doubleDoubles: projection.projectedDoubleDoubles / Math.max(1, projection.projectedGames), tripleDoubles: projection.projectedTripleDoubles / Math.max(1, projection.projectedGames) }, config.scoring);
   projection.projectedFantasyPointsPerGameLow = (base.projectedFantasyPointsPerGameLow ?? base.projectedFantasyPointsPerGame) * scale;
   projection.projectedFantasyPointsPerGameHigh = (base.projectedFantasyPointsPerGameHigh ?? base.projectedFantasyPointsPerGame) * scale;

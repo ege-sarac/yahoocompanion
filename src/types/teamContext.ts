@@ -53,6 +53,7 @@ export interface TeamContextSummary {
   teamUsageAdjustment: number;
   paceAdjustment: number;
   maximumStatAdjustmentPercent: number;
+  resourceShock?: { usage: number; creation: number; rebounding: number };
   skillConfidence?: number;
   currentRoleSecurity?: number;
   minuteBudgetAdjustmentPercent?: number;

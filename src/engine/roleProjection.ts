@@ -3,6 +3,7 @@ import { DEFAULT_LEAGUE_CONFIG } from "../config/leagueConfig";
 import type { LeagueConfig, Player, PlayerRoleHistoryRecord, Projection, ProjectionMetrics, RoleContextSummary } from "../types";
 import { calculateFantasyPoints } from "./fantasyPoints";
 import { analyzeLateSeasonRegime } from "./lateSeasonRegime";
+import { estimateProjectedBonusCounts } from "./projectionModel";
 
 export function applyRoleIntelligence(player: Player, metrics: ProjectionMetrics, record: PlayerRoleHistoryRecord | undefined, config: LeagueConfig = DEFAULT_LEAGUE_CONFIG): { metrics: ProjectionMetrics; summary?: RoleContextSummary } {
   if (!record || !record.seasons.length || (!record.regime && !record.latestSeasonGames.length)) return { metrics };
@@ -17,13 +18,17 @@ export function applyRoleIntelligence(player: Player, metrics: ProjectionMetrics
   const usageChange = difference(late.usagePct, early.usagePct);
   const creationChange = difference(late.assistsPer36, early.assistsPer36);
   const reboundChange = difference(late.reboundsPer36, early.reboundsPer36);
-  if (regime.regimeWeight <= 0) return { metrics, summary: { usagePctBaseline: latest.usagePct, usagePctRecent: late.usagePct, usageChange, creationRoleChange: creationChange, reboundRoleChange: reboundChange, lateSeasonRegime: regime.type, regimeConfidence: regime.regimeConfidence, lateSeasonPersistenceScore: regime.persistenceScore, absenceDependencyScore: regime.absenceDependencyScore, adjustmentPercent: 0, roleReasons: regime.reasons } };
+  const absenceDependencyScore = calculateEffectiveAbsenceDependency(record, regime);
+  const roleSustainability = calculateRoleSustainability(player, record, regime, absenceDependencyScore);
+  const lateSeasonMinutesChange = difference(late.minutesPerGame, regime.windows.fullSeason.minutesPerGame);
+  if (regime.regimeWeight <= 0) return { metrics, summary: { usagePctBaseline: latest.usagePct, usagePctRecent: late.usagePct, usageChange, creationRoleChange: creationChange, reboundRoleChange: reboundChange, lateSeasonRegime: regime.type, regimeConfidence: regime.regimeConfidence, lateSeasonPersistenceScore: regime.persistenceScore, absenceDependencyScore, roleSustainability, lateSeasonMinutesChange, adjustmentPercent: 0, roleReasons: regime.reasons } };
   const base = metrics.projection;
   const minutesChange = relativeChange(late.minutesPerGame, regime.windows.fullSeason.minutesPerGame);
-  const usageRate = clampSigned((usageChange ?? 0) / ROLE_PROJECTION_CONFIG.regime.usageChangeScale) * regime.regimeWeight;
-  const creationRate = clampSigned((creationChange ?? 0) / ROLE_PROJECTION_CONFIG.regime.assistsPer36ChangeScale) * regime.regimeWeight;
-  const reboundRate = clampSigned((reboundChange ?? 0) / ROLE_PROJECTION_CONFIG.regime.reboundsPer36ChangeScale) * regime.regimeWeight;
-  const minutesRate = clampSigned(minutesChange ?? 0, .08) * regime.regimeWeight;
+  const gainRetention = regime.direction > 0 ? .35 + roleSustainability * .65 : 1;
+  const usageRate = clampSigned((usageChange ?? 0) / ROLE_PROJECTION_CONFIG.regime.usageChangeScale) * regime.regimeWeight * gainRetention;
+  const creationRate = clampSigned((creationChange ?? 0) / ROLE_PROJECTION_CONFIG.regime.assistsPer36ChangeScale) * regime.regimeWeight * gainRetention;
+  const reboundRate = clampSigned((reboundChange ?? 0) / ROLE_PROJECTION_CONFIG.regime.reboundsPer36ChangeScale) * regime.regimeWeight * gainRetention;
+  const minutesRate = clampSigned(minutesChange ?? 0, .08) * regime.regimeWeight * gainRetention;
   const adjusted: Projection = { ...base,
     projectedMinutes: base.projectedMinutes * (1 + minutesRate),
     projectedPoints: base.projectedPoints * (1 + usageRate + minutesRate * .4),
@@ -32,11 +37,13 @@ export function applyRoleIntelligence(player: Player, metrics: ProjectionMetrics
     projectedOffensiveRebounds: base.projectedOffensiveRebounds * (1 + reboundRate + minutesRate * .35),
     projectedDefensiveRebounds: base.projectedDefensiveRebounds * (1 + reboundRate + minutesRate * .35),
   };
+  Object.assign(adjusted, estimateProjectedBonusCounts(adjusted, adjusted.projectedGames));
   adjusted.projectedFantasyPointsPerGame = fantasy(adjusted, config);
   const basketballChange = maxRelativeChange(base, adjusted, ["projectedMinutes", "projectedPoints", "projectedTurnovers", "projectedAssists", "projectedOffensiveRebounds", "projectedDefensiveRebounds"]);
   const interpolation = basketballChange === 0 ? 1 : Math.min(1, ROLE_PROJECTION_CONFIG.totalRoleAdjustmentCap / basketballChange);
   for (const key of ["projectedPoints", "projectedTurnovers", "projectedAssists", "projectedOffensiveRebounds", "projectedDefensiveRebounds"] as const) adjusted[key] = base[key] + (adjusted[key] - base[key]) * interpolation;
   adjusted.projectedMinutes = base.projectedMinutes + (adjusted.projectedMinutes - base.projectedMinutes) * interpolation;
+  Object.assign(adjusted, estimateProjectedBonusCounts(adjusted, adjusted.projectedGames));
   adjusted.projectedFantasyPointsPerGame = fantasy(adjusted, config);
   const finalPercent = base.projectedFantasyPointsPerGame ? adjusted.projectedFantasyPointsPerGame / base.projectedFantasyPointsPerGame - 1 : 0;
   const uncertainty = regime.type === "ABSENCE_DEPENDENT_BOOST" || regime.type === "END_SEASON_VOLATILITY" ? .04 : regime.type === "TRADE_ROLE_CHANGE" && regime.regimeConfidence > .65 ? -.015 : .01 * regime.roleChangeScore;
@@ -44,7 +51,33 @@ export function applyRoleIntelligence(player: Player, metrics: ProjectionMetrics
   const highSpread = Math.max(0, (base.projectedFantasyPointsPerGameHigh ?? base.projectedFantasyPointsPerGame * 1.1) - base.projectedFantasyPointsPerGame);
   adjusted.projectedFantasyPointsPerGameLow = Math.max(0, adjusted.projectedFantasyPointsPerGame - lowSpread * (1 + uncertainty));
   adjusted.projectedFantasyPointsPerGameHigh = adjusted.projectedFantasyPointsPerGame + highSpread * (1 + Math.max(0, uncertainty * .5));
-  return { metrics: { ...metrics, projection: adjusted, modelConfidence: clamp01(metrics.modelConfidence - Math.max(0, uncertainty) * .4 + Math.max(0, -uncertainty) * .2) }, summary: { usagePctBaseline: latest.usagePct, usagePctRecent: late.usagePct, usageChange, creationRoleChange: creationChange, reboundRoleChange: reboundChange, lateSeasonRegime: regime.type, regimeConfidence: regime.regimeConfidence, lateSeasonPersistenceScore: regime.persistenceScore, absenceDependencyScore: regime.absenceDependencyScore, adjustmentPercent: finalPercent, roleReasons: regime.reasons } };
+  const sustainabilityReason = regime.direction > 0 && roleSustainability < .55 ? ["Late-season role gain is less secure because its context may not persist."] : [];
+  return { metrics: { ...metrics, projection: adjusted, modelConfidence: clamp01(metrics.modelConfidence - Math.max(0, uncertainty) * .4 + Math.max(0, -uncertainty) * .2) }, summary: { usagePctBaseline: latest.usagePct, usagePctRecent: late.usagePct, usageChange, creationRoleChange: creationChange, reboundRoleChange: reboundChange, lateSeasonRegime: regime.type, regimeConfidence: regime.regimeConfidence, lateSeasonPersistenceScore: regime.persistenceScore, absenceDependencyScore, roleSustainability, lateSeasonMinutesChange, adjustmentPercent: finalPercent, roleReasons: [...regime.reasons, ...sustainabilityReason] } };
+}
+
+export function calculateRoleSustainability(player: Player, record: PlayerRoleHistoryRecord, regime = record.regime, absenceDependencyScore = calculateEffectiveAbsenceDependency(record, regime)): number {
+  if (!regime || regime.direction <= 0) return regime?.type === "SUSTAINED_ROLE_LOSS" ? .45 : .8;
+  const latestTeam = [...record.seasons].sort((a, b) => b.season.localeCompare(a.season))[0]?.team;
+  let score = .32 + regime.persistenceScore * .28 + regime.roleMetricAgreement * .18 + regime.regimeConfidence * .12;
+  if (regime.type === "TRADE_ROLE_CHANGE" && regime.currentTeamMatch) score += .18;
+  if (regime.type === "SUSTAINED_ROLE_GAIN" || regime.type === "LATE_SEASON_DEVELOPMENT_ROLE") score += .08;
+  if (regime.type === "ABSENCE_DEPENDENT_BOOST") score -= .24;
+  if (regime.returnRampDetected || regime.finalWeekVolatility) score -= .16;
+  if (absenceDependencyScore > .25) score -= absenceDependencyScore * .3;
+  if (latestTeam && player.nbaTeam && latestTeam !== player.nbaTeam) score -= .22;
+  if (!regime.currentTeamMatch && player.nbaTeam) score -= .1;
+  return clamp01(score);
+}
+
+export function calculateEffectiveAbsenceDependency(record: PlayerRoleHistoryRecord, regime: PlayerRoleHistoryRecord["regime"]): number {
+  if (!regime) return 0;
+  const minimumGames = ROLE_PROJECTION_CONFIG.absence.minimumGamesEachState;
+  const dependencies = (record.teammateDependencies ?? []).filter((dependency) => dependency.teammateStillOnCurrentTeam);
+  if (!dependencies.length) return 0;
+  return Math.max(0, ...dependencies.map((dependency) => {
+    const sampleStrength = Math.min(1, dependency.gamesWith / minimumGames) * Math.min(1, dependency.gamesWithout / minimumGames);
+    return dependency.dependencyScore * (ROLE_PROJECTION_CONFIG.absence.smallSampleShrinkage + (1 - ROLE_PROJECTION_CONFIG.absence.smallSampleShrinkage) * sampleStrength);
+  }));
 }
 
 function fantasy(p: Projection, config: LeagueConfig): number { return calculateFantasyPoints({ points: p.projectedPoints, offensiveRebounds: p.projectedOffensiveRebounds, defensiveRebounds: p.projectedDefensiveRebounds, assists: p.projectedAssists, steals: p.projectedSteals, blocks: p.projectedBlocks, turnovers: p.projectedTurnovers, doubleDoubles: p.projectedDoubleDoubles / Math.max(1, p.projectedGames), tripleDoubles: p.projectedTripleDoubles / Math.max(1, p.projectedGames) }, config.scoring); }

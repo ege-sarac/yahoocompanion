@@ -21,6 +21,10 @@ export interface DraftState {
   preferredMaxSameTeam: number;
   decisionLoggingEnabled: boolean;
   decisionLog: import("./draftValue").DraftDecisionSnapshot[];
+  recommendationTraceEnabled: boolean;
+  recommendationTraceGranularity: RecommendationTraceGranularity;
+  recommendationDisplay: RecommendationDisplayConfig;
+  recommendationTrace: import("./recommendationTrace").RecommendationTrace;
 }
 
 export type TeamDiversificationMode = "Off" | "Strong soft cap" | "Strict";
@@ -31,3 +35,7 @@ export interface PositionIntent {
   mode: PositionIntentMode;
   positions: import("./player").YahooPosition[];
 }
+
+export type RecommendationTraceGranularity = "USER_TURNS" | "EVERY_RECORDED_PICK";
+export type RecommendationExpansionMode = "DRAFT_PROGRESS" | "ROUND";
+export interface RecommendationDisplayConfig { primaryCount: number; expandedTotalCount: number; expansionMode: RecommendationExpansionMode; expandAtProgress: number; expandAtRound: number; }

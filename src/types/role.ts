@@ -155,6 +155,8 @@ export interface RoleContextSummary {
   regimeConfidence?: number;
   lateSeasonPersistenceScore?: number;
   absenceDependencyScore?: number;
+  roleSustainability?: number;
+  lateSeasonMinutesChange?: number;
   adjustmentPercent: number;
   roleReasons: string[];
 }
