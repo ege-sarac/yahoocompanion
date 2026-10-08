@@ -2,6 +2,7 @@ import type { LeagueConfig, StoredLeagueConfig } from "../types";
 
 export const LEAGUE_CONFIG_STORAGE_KEY = "yahoo-companion:league-config:v1";
 export const LEAGUE_CONFIG_SCHEMA_VERSION = 1 as const;
+export const DEFAULT_EXTERNAL_PROJECTION_FALLBACK_THRESHOLD = 1.5;
 
 export const DEFAULT_LEAGUE_CONFIG: LeagueConfig = Object.freeze({
   teamCount: 16,
@@ -9,6 +10,7 @@ export const DEFAULT_LEAGUE_CONFIG: LeagueConfig = Object.freeze({
   rounds: 15,
   roster: Object.freeze({ G: 3, F: 2, C: 2, UTIL: 3, BN: 5, IL: 0, ILPlus: 0 }),
   scoring: Object.freeze({ PTS: 1, OREB: 1.4, DREB: 1.2, AST: 1.5, STL: 2, BLK: 2, TO: -1, DD: 5, TD: 5 }),
+  externalProjectionFallbackThreshold: DEFAULT_EXTERNAL_PROJECTION_FALLBACK_THRESHOLD,
 });
 
 /** Backward-compatible name for imports that mean application defaults. */
@@ -39,14 +41,15 @@ export function validateLeagueConfig(value: unknown): LeagueConfig {
     BN: integer(raw.roster.BN, "Bench slots", 0, 20), IL: optionalInteger(raw.roster.IL, "IL slots", 0, 20),
     ILPlus: optionalInteger(raw.roster.ILPlus, "IL+ slots", 0, 20),
   };
-  if (getDraftedRosterSize({ teamCount, userDraftSlot, rounds, roster, scoring: DEFAULT_LEAGUE_CONFIG.scoring }) !== rounds) {
+  if (getDraftedRosterSize({ teamCount, userDraftSlot, rounds, roster, scoring: DEFAULT_LEAGUE_CONFIG.scoring, externalProjectionFallbackThreshold: DEFAULT_EXTERNAL_PROJECTION_FALLBACK_THRESHOLD }) !== rounds) {
     throw new Error("Drafted roster slots (G/F/C/UTIL/BN) must equal the number of rounds.");
   }
   const scoring = Object.fromEntries(
     (["PTS", "OREB", "DREB", "AST", "STL", "BLK", "TO", "DD", "TD"] as const)
       .map((key) => [key, finite(scoringRaw[key], `${key} scoring weight`, -20, 20)]),
   ) as unknown as LeagueConfig["scoring"];
-  return { teamCount, userDraftSlot, rounds, roster, scoring };
+  const externalProjectionFallbackThreshold = raw.externalProjectionFallbackThreshold === undefined ? DEFAULT_EXTERNAL_PROJECTION_FALLBACK_THRESHOLD : finite(raw.externalProjectionFallbackThreshold, "External projection fallback gap", 0, 10);
+  return { teamCount, userDraftSlot, rounds, roster, scoring, externalProjectionFallbackThreshold };
 }
 
 export function serializeLeagueConfig(config: LeagueConfig): string {
@@ -56,10 +59,11 @@ export function serializeLeagueConfig(config: LeagueConfig): string {
 
 export function migrateLeagueConfig(value: unknown): LeagueConfig {
   if (value === undefined || value === null) return structuredClone(DEFAULT_LEAGUE_CONFIG);
-  if (isRecord(value) && value.schemaVersion === 1) return validateLeagueConfig(value);
-  if (isRecord(value) && "myDraftSlot" in value) {
-    const slots = isRecord(value.rosterSlots) ? value.rosterSlots : {};
-    const scoring = isRecord(value.scoring) ? value.scoring : {};
+  if (!isRecord(value)) return validateLeagueConfig(value);
+  if (value.schemaVersion === 1) return validateLeagueConfig(withSafeExternalProjectionThreshold(value));
+  if ("myDraftSlot" in value) {
+    const slots: Record<string, unknown> = isRecord(value.rosterSlots) ? value.rosterSlots : {};
+    const scoring: Record<string, unknown> = isRecord(value.scoring) ? value.scoring : {};
     return validateLeagueConfig({
       teamCount: value.teamCount, userDraftSlot: value.myDraftSlot, rounds: value.rosterSize,
       roster: { G: slots.G, F: slots.F, C: slots.C, UTIL: slots.UTIL, BN: slots.BN, IL: 0, ILPlus: 0 },
@@ -68,7 +72,21 @@ export function migrateLeagueConfig(value: unknown): LeagueConfig {
         DD: scoring.doubleDoubles, TD: scoring.tripleDoubles },
     });
   }
-  return validateLeagueConfig(value);
+  return validateLeagueConfig(withSafeExternalProjectionThreshold(value));
+}
+
+/**
+ * Old saved settings predate this field. A corrupt persisted value should not
+ * discard the user's otherwise-valid league configuration during startup.
+ * Direct settings saves still go through validateLeagueConfig and show an error.
+ */
+function withSafeExternalProjectionThreshold(value: Record<string, unknown>): Record<string, unknown> {
+  if (value.schemaVersion === 1 && isRecord(value.config)) {
+    return { ...value, config: withSafeExternalProjectionThreshold(value.config) };
+  }
+  const threshold = value.externalProjectionFallbackThreshold;
+  if (threshold === undefined || (typeof threshold === "number" && Number.isFinite(threshold) && threshold >= 0 && threshold <= 10)) return value;
+  return { ...value, externalProjectionFallbackThreshold: DEFAULT_EXTERNAL_PROJECTION_FALLBACK_THRESHOLD };
 }
 
 function unwrapStoredConfig(value: unknown): unknown {

@@ -24,6 +24,7 @@ export interface LeagueConfig {
   rounds: number;
   roster: RosterSettings;
   scoring: ScoringSettings;
+  externalProjectionFallbackThreshold: number;
 }
 
 export interface StoredLeagueConfig {

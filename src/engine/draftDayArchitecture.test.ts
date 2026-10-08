@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LEAGUE_CONFIG, migrateLeagueConfig, serializeLeagueConfig, validateLeagueConfig } from "../config/leagueConfig";
+import { DEFAULT_EXTERNAL_PROJECTION_FALLBACK_THRESHOLD, DEFAULT_LEAGUE_CONFIG, migrateLeagueConfig, serializeLeagueConfig, validateLeagueConfig } from "../config/leagueConfig";
 import type { DraftDayBackup, LeagueConfig, Player } from "../types";
 import { createInitialDraftState, getDraftProgress, getNextMyPick, validateDraftState } from "./draftState";
 import { getSnakeDraftTeamNumber, getTeamOverallPicks } from "./draftOrder";
@@ -28,9 +28,15 @@ function player(id: string, points = 20, positions: Player["yahooPositions"] = [
 describe("draft-day architecture", () => {
   it("validates, serializes, and migrates league settings", () => {
     expect(validateLeagueConfig(DEFAULT_LEAGUE_CONFIG)).toEqual(DEFAULT_LEAGUE_CONFIG);
+    expect(DEFAULT_LEAGUE_CONFIG.externalProjectionFallbackThreshold).toBe(DEFAULT_EXTERNAL_PROJECTION_FALLBACK_THRESHOLD);
     expect(migrateLeagueConfig(JSON.parse(serializeLeagueConfig(DEFAULT_LEAGUE_CONFIG)))).toEqual(DEFAULT_LEAGUE_CONFIG);
+    expect(migrateLeagueConfig({ schemaVersion: 1, config: { ...DEFAULT_LEAGUE_CONFIG, externalProjectionFallbackThreshold: "invalid" } }).externalProjectionFallbackThreshold).toBe(1.5);
     expect(migrateLeagueConfig({ teamCount: 16, myDraftSlot: 10, rosterSize: 15, rosterSlots: { G: 3, F: 2, C: 2, UTIL: 3, BN: 5 }, scoring: { points: 1, offensiveRebounds: 1.4, defensiveRebounds: 1.2, assists: 1.5, steals: 2, blocks: 2, turnovers: -1, doubleDoubles: 5, tripleDoubles: 5 } })).toEqual(DEFAULT_LEAGUE_CONFIG);
     expect(() => validateLeagueConfig({ ...DEFAULT_LEAGUE_CONFIG, userDraftSlot: 17 })).toThrow(/Draft slot/);
+    expect(() => validateLeagueConfig({ ...DEFAULT_LEAGUE_CONFIG, externalProjectionFallbackThreshold: -0.1 })).toThrow(/fallback gap/);
+    expect(() => validateLeagueConfig({ ...DEFAULT_LEAGUE_CONFIG, externalProjectionFallbackThreshold: 10.1 })).toThrow(/fallback gap/);
+    expect(migrateLeagueConfig({ ...DEFAULT_LEAGUE_CONFIG, externalProjectionFallbackThreshold: Number.NaN }).externalProjectionFallbackThreshold).toBe(1.5);
+    expect(migrateLeagueConfig({ ...DEFAULT_LEAGUE_CONFIG, externalProjectionFallbackThreshold: 7.2 }).externalProjectionFallbackThreshold).toBe(7.2);
   });
 
   it("uses generic snake settings and handles completion", () => {

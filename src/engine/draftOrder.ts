@@ -11,6 +11,7 @@ export interface UserPickSchedule {
   secondNextUserPick: number | null;
   picksUntilNextUserPick: number | null;
   picksUntilSecondNextUserPick: number | null;
+  remainingUserPicks: number[];
 }
 
 export function getUserPickSchedule(
@@ -28,6 +29,7 @@ export function getUserPickSchedule(
     secondNextUserPick,
     picksUntilNextUserPick: nextUserPick === null ? null : nextUserPick - currentOverallPick - 1,
     picksUntilSecondNextUserPick: secondNextUserPick === null ? null : secondNextUserPick - currentOverallPick - 1,
+    remainingUserPicks: picks.filter((pick) => pick > currentOverallPick),
   };
 }
 

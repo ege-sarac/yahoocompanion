@@ -9,6 +9,7 @@ import type { CandidateFeasibility, PositionNeedUrgency, RosterFeasibility } fro
 import type { PositionIntent } from "./draft";
 import type { TeamContextSummary, TeamRoleDebug } from "./teamContext";
 import type { RoleContextSummary } from "./role";
+import type { YahooProjectionComparison } from "./yahooProjection";
 import type { CareerStageProjection, CurrentRoleAssessment, ExpectedGamesProjection, MarketTimingProjection, PositionContextBreakdown, ReplacementLevelProfile, RoleScenarioSummary, SeasonValueProjection } from "./draftValue";
 
 export interface ProjectionMetrics {
@@ -27,6 +28,7 @@ export interface ProjectionMetrics {
   expectedGamesProjection?: ExpectedGamesProjection;
   careerStageProjection?: CareerStageProjection;
   roleAssessment?: CurrentRoleAssessment;
+  yahooProjectionComparison?: YahooProjectionComparison;
 }
 
 export interface RecommendationComponents {
@@ -133,6 +135,25 @@ export interface PlayerRecommendation extends ProjectionMetrics {
   rawRoleSignal: number;
   lateHoldabilityAdjustment: number;
   dominanceWarning: boolean;
+  lateProductionBlend: number;
+  projectedSurplusPerGame: number;
+  baseSurplusPerGame: number;
+  lowSurplusPerGame: number;
+  highSurplusPerGame: number;
+  lateProductionQuality: number;
+  riskAdjustedProduction: number;
+  durabilityEfficiency: number;
+  requiredRiskPremium: number;
+  stashCapacity: number;
+  stashBurden: number;
+  rosterAvailabilityLoad: number;
+  highVsBaseGain: number;
+  ceilingMagnitude: number;
+  ceilingCredibility: number;
+  lateUpsideValue: number;
+  lateValueClassification: "CORE_PRODUCTION" | "BALANCED_VALUE" | "UPSIDE_TARGET" | "INJURY_STASH" | "WAIVER_LEVEL";
+  lateRoundDominanceAdjustment: number;
+  pickNowQualityFloorAdjustment: number;
 }
 
 export interface RecommendationScoreBreakdown {
@@ -152,6 +173,11 @@ export interface RecommendationScoreBreakdown {
   nonProductionStackPenalty: number;
   endgameUtility: number;
   lateHoldability: number;
+  lateProductionQuality: number;
+  lateUpside: number;
+  stashBurden: number;
+  dominance: number;
+  qualityFloor: number;
   preAdjustmentScore: number;
   finalDraftScore: number;
   reconciliationResidual: number;

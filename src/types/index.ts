@@ -1,4 +1,4 @@
-export type { DraftPick, DraftState, PositionIntent, PositionIntentMode, TeamDiversificationMode, RecommendationDisplayConfig, RecommendationExpansionMode, RecommendationTraceGranularity } from "./draft";
+export type { DraftPick, DraftPickProvenance, DraftState, PositionIntent, PositionIntentMode, TeamDiversificationMode, RecommendationDisplayConfig, RecommendationExpansionMode, RecommendationTraceGranularity } from "./draft";
 export type { RecommendationTrace, RecommendationTraceSnapshot, RecommendationCandidateTrace, RecommendationCompactCandidateTrace, RecommendationCarryForwardCandidate, RecommendationRankMovement, RecommendationTraceOutcome, RecommendationTraceExport } from "./recommendationTrace";
 export type { CandidateFeasibility, PositionNeedUrgency, PositionUrgencyLabel, RosterFeasibility } from "./feasibility";
 export type { PlayerRoleProfile, TeamContextSummary, TeamEcosystemResult, TeamRoleDebug } from "./teamContext";
@@ -28,6 +28,8 @@ export type {
   RunPressureLabel,
 } from "./recommendation";
 export type { PlayerOverride } from "./playerOverride";
+export type { YahooDefaultProjection, YahooDefaultProjectionDataSet, YahooProjectionComparison } from "./yahooProjection";
+export type { CurrentRoleOverride, RotationTier, RoleContext } from "./currentRoleOverride";
 export type {
   RosterAssignmentEntry,
   RosterAssignmentResult,
@@ -44,6 +46,8 @@ export type {
   InjurySourceMetadata,
   MatchedInjuryEntry,
   ReturnConfidence,
+  InjuryAvailabilityClass,
+  CurrentHealthStatus,
   UnmatchedInjuryEntry,
 } from "./injurySnapshot";
 export type {

@@ -36,6 +36,10 @@ export interface ExpectedGamesProjection {
   currentHealthVerified: boolean;
   majorInjuryComeback?: MajorInjuryComebackProjection;
   reasons: string[];
+  historicalDurabilityBaseline?: number;
+  currentHealthAdjustment?: number;
+  currentInjuryTimelineAdjustment?: number;
+  returnRampAdjustment?: number;
 }
 
 export interface ReplacementLevelProfile {
@@ -65,6 +69,11 @@ export interface MarketPlayerProfile {
   playerId: string;
   yahooPreRank?: number;
   yahooADP?: number;
+  /** External Yahoo consensus historical reference; diagnostic only, never projection input. */
+  externalHistoricalFantasyPointsPerGame?: number;
+  externalConsensusRank?: number;
+  externalRank?: number;
+  externalRankChangeVsPrior?: string;
   mockMedianPick?: number;
   mockMeanPick?: number;
   mockRoundEquivalentMedian?: number;
@@ -83,11 +92,19 @@ export interface MarketPlayerProfile {
 }
 
 export interface MarketObservation {
-  draftProgress: number;
-  roundEquivalent: number;
+  /** Absolute source-board coordinate. Never rescaled to target draft progress. */
+  overallPick?: number;
+  /** Last observed available pick for a right-censored source draft. */
+  censorThreshold?: number;
   teamCount: number;
   rounds: number;
   rightCensored: boolean;
+  source?: "USER_MOCK" | "EXTERNAL_REFERENCE" | "CURRENT_ROOM" | "YAHOO_REFERENCE" | "OTHER_REFERENCE";
+  confidence?: number;
+  asOfDate?: string;
+  /** Legacy-only fields retained so old marketProfiles.json can be read once. */
+  draftProgress?: number;
+  roundEquivalent?: number;
 }
 
 export interface MarketDataSet {
@@ -102,6 +119,13 @@ export interface MarketDataSet {
 
 export type SurvivalSource = "MARKET_HISTORY" | "YAHOO_ADP" | "BLENDED_MARKET" | "MODEL_ONLY";
 export interface MarketTimingProjection {
+  /** Raw external reference fields are diagnostic/timing-only; they never feed player projections. */
+  yahooAdp?: number | null;
+  mockMeanPick?: number | null;
+  combinedMarketPickEstimate?: number | null;
+  marketSourceGap?: number | null;
+  marketSourceAgreement?: number | null;
+  externalHistoricalFantasyPointsPerGame?: number | null;
   marketPickEstimate: number | null;
   marketRoundLow: number | null;
   marketRoundHigh: number | null;
@@ -129,6 +153,22 @@ export interface MarketTimingProjection {
   waitOpportunityCost?: number;
   timingLabel?: "DRAFT NOW" | "WINDOW APPROACHING" | "LIKELY TO SURVIVE" | "TARGET LATER";
   timingBlend?: number;
+  censoredSurvivalLowerBound?: number | null;
+  targetWindowStart?: number | null;
+  targetWindowCenter?: number | null;
+  targetWindowEnd?: number | null;
+  targetWindowLowerBound?: number | null;
+  userTurnsUntilTargetWindow?: number | null;
+  censorDerivedWait?: number;
+  exactMarketDerivedWait?: number;
+  liveRoomDerivedWait?: number;
+  multiTurnTargetDistanceWait?: number;
+  alternativeUrgencyWait?: number;
+  survivalThirdTurn?: number;
+  futureUserPickSurvival?: Array<{ overallPick: number; survival: number; evidenceCount: number }>;
+  lastSafeUserPick?: number | null;
+  acquisitionFrontierPick?: number | null;
+  userTurnsBeforeFrontier?: number;
 }
 
 export type RoleScenarioLabel = "LOW" | "BASE" | "HIGH";

@@ -18,6 +18,8 @@ const RETURN_CONFIDENCE_VALUES: ReturnConfidence[] = [
   "low",
   "unknown",
 ];
+const AVAILABILITY_CLASSES = ["DAY_TO_DAY", "OPENING_WEEKS", "FIRST_QUARTER", "MIDSEASON", "LATE_SEASON", "MOST_OF_SEASON", "FULL_SEASON", "RETURN_RAMP", "UNKNOWN"] as const;
+const CURRENT_HEALTH_STATUSES = ["HEALTHY_CLEARED", "FULL_PARTICIPATION", "RETURNING_SOON", "RETURN_RAMP", "LIMITED", "INJURED", "OUT_LONG_TERM", "UNKNOWN"] as const;
 
 export function validateInjurySnapshot(value: unknown): InjurySnapshot {
   if (!isRecord(value)) {
@@ -181,6 +183,11 @@ export function mergeInjurySnapshot(
         sourcePublishedAt: entry.sourcePublishedAt ?? null,
         fetchedOrReviewedAt: entry.fetchedOrReviewedAt,
       },
+      injuryAvailabilityClass: entry.availabilityClass,
+      currentHealthStatus: entry.currentHealthStatus,
+      expectedGamesLowOverride: entry.expectedGamesLowOverride,
+      expectedGamesBaseOverride: entry.expectedGamesBaseOverride,
+      expectedGamesHighOverride: entry.expectedGamesHighOverride,
       currentInjurySource: "snapshot",
     };
   });
@@ -300,6 +307,11 @@ function validateSnapshotEntry(
   validateOptionalText(value.expectedReturnText, label, "expectedReturnText");
   validateOptionalText(value.notes, label, "notes");
   validateOptionalText(value.sourceUrl, label, "sourceUrl");
+  if (value.availabilityClass !== undefined && !AVAILABILITY_CLASSES.includes(value.availabilityClass as typeof AVAILABILITY_CLASSES[number])) throw new Error(`${label} has an invalid availabilityClass.`);
+  if (value.currentHealthStatus !== undefined && !CURRENT_HEALTH_STATUSES.includes(value.currentHealthStatus as typeof CURRENT_HEALTH_STATUSES[number])) throw new Error(`${label} has an invalid currentHealthStatus.`);
+  for (const key of ["expectedGamesLowOverride", "expectedGamesBaseOverride", "expectedGamesHighOverride"] as const) if (value[key] !== undefined && (typeof value[key] !== "number" || !Number.isFinite(value[key]) || value[key] < 0 || value[key] > 82)) throw new Error(`${label} has an invalid ${key}.`);
+  const low = value.expectedGamesLowOverride as number | undefined, base = value.expectedGamesBaseOverride as number | undefined, high = value.expectedGamesHighOverride as number | undefined;
+  if ((low !== undefined && base !== undefined && low > base) || (base !== undefined && high !== undefined && base > high) || (low !== undefined && high !== undefined && low > high)) throw new Error(`${label} expected-games overrides must be ordered low/base/high.`);
   if (
     value.sourcePublishedAt !== undefined &&
     value.sourcePublishedAt !== null &&
@@ -322,6 +334,11 @@ function validateSnapshotEntry(
     sourcePublishedAt: optionalText(value.sourcePublishedAt),
     fetchedOrReviewedAt: value.fetchedOrReviewedAt as string,
     notes: optionalText(value.notes),
+    availabilityClass: value.availabilityClass as InjurySnapshotEntry["availabilityClass"],
+    currentHealthStatus: value.currentHealthStatus as InjurySnapshotEntry["currentHealthStatus"],
+    expectedGamesLowOverride: low,
+    expectedGamesBaseOverride: base,
+    expectedGamesHighOverride: high,
   };
 }
 
@@ -378,6 +395,11 @@ function canonicalInjuryValue(entry: InjurySnapshotEntry): string {
     expectedReturnDate: entry.expectedReturnDate ?? null,
     expectedReturnText: entry.expectedReturnText ?? null,
     returnConfidence: entry.returnConfidence,
+    availabilityClass: entry.availabilityClass ?? null,
+    currentHealthStatus: entry.currentHealthStatus ?? null,
+    expectedGamesLowOverride: entry.expectedGamesLowOverride ?? null,
+    expectedGamesBaseOverride: entry.expectedGamesBaseOverride ?? null,
+    expectedGamesHighOverride: entry.expectedGamesHighOverride ?? null,
   });
 }
 

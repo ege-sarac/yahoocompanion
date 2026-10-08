@@ -28,7 +28,12 @@ import {
   projectPlayerForRecommendations,
   buildTeamEcosystem,
   applyRoleIntelligence,
+  applyCurrentRoleOverride,
+  applyDraftValueProjection,
+  applyYahooProjectionBaseline,
+  approximateRoundFromPick,
 } from "../engine";
+import currentRoleOverridesJson from "../../data/manual/currentRoleOverrides.json";
 import type {
   InjuryStatus,
   InjuryMatchingReport,
@@ -45,6 +50,10 @@ import type {
   PlayerRoleDataSet,
   RoleContextSummary,
   PlayerRoleMetrics,
+  CurrentRoleOverride,
+  MarketDataSet,
+  MarketPlayerProfile,
+  YahooDefaultProjectionDataSet,
 } from "../types";
 
 interface PlayerDataPageProps {
@@ -53,6 +62,8 @@ interface PlayerDataPageProps {
   injuryReport: InjuryMatchingReport;
   newPlayerInputs: readonly NewPlayerProjectionInput[];
   roleData?: PlayerRoleDataSet;
+  marketData?: MarketDataSet;
+  yahooDefaultProjections?: YahooDefaultProjectionDataSet;
 }
 
 type EligibilityFilter = "all" | "missing" | "complete";
@@ -67,6 +78,7 @@ interface PlayerRow {
   baseMetrics: ProjectionMetrics | null;
   teamContext?: TeamContextSummary;
   roleContext?: RoleContextSummary;
+  marketProfile?: MarketPlayerProfile;
 }
 
 export function PlayerDataPage({
@@ -75,6 +87,8 @@ export function PlayerDataPage({
   injuryReport,
   newPlayerInputs,
   roleData,
+  marketData,
+  yahooDefaultProjections,
 }: PlayerDataPageProps) {
   const { config } = useLeagueConfig();
   const { state: draftState } = useDraft();
@@ -94,6 +108,7 @@ export function PlayerDataPage({
   const [topLimit, setTopLimit] = useState<TopLimit>(0);
   const [activePlayerId, setActivePlayerId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [watchlistText, setWatchlistText] = useState(() => localStorage.getItem("yahooCompanion.scoutingWatchlist") ?? "");
   const importInputRef = useRef<HTMLInputElement>(null);
   const injuryImportInputRef = useRef<HTMLInputElement>(null);
   const newPlayerImportInputRef = useRef<HTMLInputElement>(null);
@@ -102,19 +117,27 @@ export function PlayerDataPage({
   const sortedRows = useMemo<PlayerRow[]>(
     () => {
       const records = new Map((roleData?.players ?? []).map((record) => [record.playerId, record]));
+      const marketByPlayerId = new Map((marketData?.profiles ?? []).map((profile) => [profile.playerId, profile]));
+      const yahooProjectionByPlayerId = new Map((yahooDefaultProjections?.entries ?? []).map((entry) => [entry.playerId, entry]));
       const latestRole = new Map<string, PlayerRoleMetrics>();
+      const referenceSeason = players.flatMap((player) => player.historicalStats.map((season) => season.season)).sort((a, b) => b.localeCompare(a))[0];
+      const configuredOverrides = Array.isArray(currentRoleOverridesJson.entries) ? currentRoleOverridesJson.entries as CurrentRoleOverride[] : [];
       for (const record of roleData?.players ?? []) { const latest = record.seasons.slice().sort((a, b) => b.season.localeCompare(a.season))[0]; if (latest) latestRole.set(record.playerId, latest); }
       const baseRows = players.map((player) => {
+          const currentOverride = configuredOverrides.find((entry) => entry.playerId === player.id || entry.playerName.toLocaleLowerCase() === player.name.toLocaleLowerCase());
+          const resolvedPlayer = currentOverride?.currentHealthStatus ? { ...player, currentHealthStatus: currentOverride.currentHealthStatus } : player;
           const projected = projectPlayerForRecommendations(
-            player,
+            resolvedPlayer,
             newPlayerInputs.find((input) => input.playerId === player.id),
             undefined,
             config,
           );
-          const roleAdjusted = projected ? applyRoleIntelligence(player, projected, records.get(player.id), config) : undefined;
+          const yahooBaseline = projected ? applyYahooProjectionBaseline(resolvedPlayer, projected, yahooProjectionByPlayerId.get(player.id), config) : undefined;
+          const roleAdjusted = yahooBaseline ? applyRoleIntelligence(resolvedPlayer, yahooBaseline, records.get(player.id), config) : undefined;
+          const currentRoleAdjusted = roleAdjusted ? applyCurrentRoleOverride(resolvedPlayer, roleAdjusted.metrics, configuredOverrides) : undefined;
           return {
-            player,
-            metrics: roleAdjusted?.metrics ?? null,
+            player: resolvedPlayer,
+            metrics: currentRoleAdjusted ? applyDraftValueProjection(resolvedPlayer, currentRoleAdjusted, records.get(player.id), config, referenceSeason) : null,
             roleContext: roleAdjusted?.summary,
           };
         });
@@ -130,6 +153,7 @@ export function PlayerDataPage({
             baseMetrics,
             teamContext: context?.contextsByPlayerId.get(player.id),
             roleContext,
+            marketProfile: marketByPlayerId.get(player.id),
           };
         })
         .sort(
@@ -139,7 +163,7 @@ export function PlayerDataPage({
             left.player.name.localeCompare(right.player.name),
         );
     },
-    [config, draftState.teamEcosystemEnabled, newPlayerInputs, players, roleData],
+    [config, draftState.teamEcosystemEnabled, marketData, newPlayerInputs, players, roleData, yahooDefaultProjections],
   );
   const scopedRows = useMemo(
     () => (topLimit === 0 ? sortedRows : sortedRows.slice(0, topLimit)),
@@ -170,6 +194,11 @@ export function PlayerDataPage({
       }),
     [eligibilityFilter, injuryFilter, scopedRows, search, team],
   );
+  const watchlistRows = useMemo(() => {
+    const names = watchlistText.split(/[\n,]/).map((name) => name.trim().toLocaleLowerCase()).filter(Boolean);
+    return names.map((name) => sortedRows.find((row) => row.player.name.toLocaleLowerCase() === name) ?? { player: { id: `unmatched-${name}`, name, nbaTeam: null, yahooPositions: [], age: null, injuryStatus: null, expectedReturnDate: null, historicalStats: [], projections: null, injuryRisk: null, opportunityScore: null, breakoutScore: null }, projectedFantasyPointsPerGame: null, historicalAvailabilityRisk: null, metrics: null, baseMetrics: null });
+  }, [sortedRows, watchlistText]);
+  function saveWatchlist(value: string) { setWatchlistText(value); localStorage.setItem("yahooCompanion.scoutingWatchlist", value); }
   const teams = useMemo(
     () =>
       [...new Set(players.map((player) => player.nbaTeam).filter(Boolean))].sort(
@@ -469,6 +498,15 @@ export function PlayerDataPage({
         </div>
       </section>
 
+      <section className="panel" aria-labelledby="scouting-watchlist-heading">
+        <div className="panel-heading"><div><p className="eyebrow">Visibility only</p><h3 id="scouting-watchlist-heading">Scouting Watchlist</h3></div></div>
+        <label>Paste player names (one per line or comma-separated)<textarea value={watchlistText} onChange={(event) => saveWatchlist(event.target.value)} rows={3} /></label>
+        {watchlistRows.length > 0 && <div className="recommendations-table-wrap"><table className="recommendations-table"><thead><tr><th>Player</th><th>Status</th><th>FP/G</th><th>Expected GP</th><th>MPG</th><th>LOW / BASE / HIGH</th><th>Risk</th></tr></thead><tbody>{watchlistRows.map((row) => {
+          const drafted = draftState.picks.find((pick) => pick.playerId === row.player.id);
+          return <tr key={row.player.id}><td>{row.player.name}<small>{row.player.nbaTeam ?? "Unmatched"} · {row.player.yahooPositions.join("/") || "—"}</small></td><td>{drafted ? `Drafted #${drafted.overallPick} · R${drafted.round}` : row.metrics ? "Available" : "Unmatched"}</td><td>{row.projectedFantasyPointsPerGame?.toFixed(1) ?? "—"}</td><td>{row.metrics?.expectedGamesProjection?.expectedGames.toFixed(1) ?? "—"}</td><td>{row.metrics?.projection.projectedMinutes.toFixed(1) ?? "—"}</td><td>{row.metrics ? `${row.metrics.projection.projectedFantasyPointsPerGameLow?.toFixed(1) ?? "—"} / ${row.metrics.projection.projectedFantasyPointsPerGame.toFixed(1)} / ${row.metrics.projection.projectedFantasyPointsPerGameHigh?.toFixed(1) ?? "—"}` : "—"}</td><td>{row.metrics?.expectedGamesProjection?.availabilityRiskLabel ?? "—"}</td></tr>;
+        })}</tbody></table></div>}
+      </section>
+
       <div className="eligibility-progress">
         <div>
           <span>Yahoo eligibility completed</span>
@@ -627,10 +665,17 @@ export function PlayerDataPage({
                 <th>Projection source</th>
                 <th>Projected MPG</th>
                 <th>Projected FP/G</th>
+                <th>Mock mean pick</th>
+                <th>Yahoo ADP</th>
+                <th>Historical FP/G</th>
+                <th>Internal FP/G</th>
+                <th>Yahoo adjusted FP/G</th>
+                <th>Projection gap</th>
+                <th>Production source</th>
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map(({ player, historicalAvailabilityRisk, projectedFantasyPointsPerGame, metrics, teamContext, roleContext }) => (
+              {filteredRows.map(({ player, historicalAvailabilityRisk, projectedFantasyPointsPerGame, metrics, teamContext, roleContext, marketProfile }) => (
                 <tr
                   className={activePlayerId === player.id ? "active-row" : undefined}
                   key={player.id}
@@ -720,6 +765,13 @@ export function PlayerDataPage({
                   <td>{metrics?.projectionSource ?? "—"}</td>
                   <td>{metrics ? <>{metrics.projection.projectedMinutes.toFixed(1)}<small className="return-text">{formatRange(metrics.projection.projectedMinutesLow, metrics.projection.projectedMinutesHigh)}</small></> : "—"}</td>
                   <td>{projectedFantasyPointsPerGame === null ? "—" : <>{projectedFantasyPointsPerGame.toFixed(1)}<small className="return-text">{formatRange(metrics?.projection.projectedFantasyPointsPerGameLow, metrics?.projection.projectedFantasyPointsPerGameHigh)}</small>{roleContext?.usagePctBaseline !== undefined && <small className="return-text">USG {roleContext.usagePctBaseline.toFixed(1)}% · {roleContext.lateSeasonRegime?.replaceAll("_", " ")}</small>}{roleContext && Math.abs(roleContext.adjustmentPercent) >= .001 && <small className="return-text">Role {roleContext.adjustmentPercent >= 0 ? "+" : ""}{Math.round(roleContext.adjustmentPercent * 100)}% · confidence {Math.round((roleContext.regimeConfidence ?? 0) * 100)}%</small>}{teamContext && Math.abs(teamContext.adjustmentPercent) >= .001 && <small className="return-text">Team context {teamContext.label} ({teamContext.adjustmentPercent >= 0 ? "+" : ""}{Math.round(teamContext.adjustmentPercent * 100)}%) · usage load {teamContext.teamUsageLoad.toFixed(2)}</small>}</>}</td>
+                  <td>{formatPickAndRound(marketProfile?.mockMeanPick, config.teamCount)}</td>
+                  <td>{formatPickAndRound(marketProfile?.yahooADP, config.teamCount)}</td>
+                  <td>{marketProfile?.externalHistoricalFantasyPointsPerGame?.toFixed(1) ?? "—"}</td>
+                  <td>{metrics?.yahooProjectionComparison?.internalComparableFantasyPPG.toFixed(1) ?? "—"}</td>
+                  <td>{metrics?.yahooProjectionComparison?.leagueAdjustedYahooFantasyPPG?.toFixed(1) ?? "—"}</td>
+                  <td>{metrics?.yahooProjectionComparison?.projectionGap === undefined ? "—" : `${metrics.yahooProjectionComparison.projectionGap >= 0 ? "+" : ""}${metrics.yahooProjectionComparison.projectionGap.toFixed(1)}`}</td>
+                  <td>{metrics?.yahooProjectionComparison?.sourceSelected === "YAHOO_EXTERNAL" ? `Yahoo External · fallback gap ${config.externalProjectionFallbackThreshold.toFixed(1)}` : `Internal · fallback gap ${config.externalProjectionFallbackThreshold.toFixed(1)}`}</td>
                 </tr>
               ))}
             </tbody>
@@ -735,6 +787,11 @@ function formatDateTime(value: string): string {
   return Number.isFinite(timestamp)
     ? new Date(timestamp).toLocaleDateString()
     : "Invalid date";
+}
+
+function formatPickAndRound(pick: number | undefined, teamCount: number): string {
+  const round = approximateRoundFromPick(pick, teamCount);
+  return pick === undefined || round === null ? "—" : `${pick.toFixed(1)} (R${round.toFixed(1)})`;
 }
 
 interface NewPlayerEditorProps {

@@ -35,7 +35,8 @@ export type ExpectedMinutesSource =
 
 export type ProjectionSource =
   | "Veteran NBA history"
-  | "Rookie/new-player model";
+  | "Rookie/new-player model"
+  | "Yahoo external baseline";
 
 export type NbaAvailabilityStatus =
   | "NBA roster"

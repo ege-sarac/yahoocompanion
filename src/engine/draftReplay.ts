@@ -12,6 +12,7 @@ export interface DraftReplaySnapshot {
   feasibilitySlack: number;
   topFive: PlayerRecommendation[];
   selectedPlayerId: string | null;
+  availableAtDecision: boolean;
   selectedRank: number | null;
   selectedRecommendation: PlayerRecommendation | null;
   bestSeasonValue: PlayerRecommendation | null;
@@ -56,7 +57,8 @@ export function replayDraft(
       const nextWindowRecallAt5 = nextWindow === null || nextWindow.length === 0 ? null : nextWindow.filter((id) => topFiveIds.includes(id)).length / nextWindow.length;
       const topTenIds = ranking.recommendations.slice(0, 10).map((entry) => entry.player.id);
       const nextWindowRecallAt10 = nextWindow === null || nextWindow.length === 0 ? null : nextWindow.filter((id) => topTenIds.includes(id)).length / nextWindow.length;
-      snapshots.push({ overallPick, rosterBeforePick: [...state.myPlayerIds], positionNeedUrgency: ranking.positionNeedUrgency, feasibilitySlack: ranking.rosterFeasibility.feasibilitySlack, topFive: ranking.topRecommendations, selectedPlayerId: selectedId, selectedRank: selectedRankIndex < 0 ? null : selectedRankIndex + 1, selectedRecommendation, bestSeasonValue, bestByPosition, scarcityByPosition: ranking.scarcityByPosition, recentRuns: ranking.recentRuns, topFiveSurvivalToNextTurn, nextWindowRecallAt5, nextWindowRecallAt10, comment: missingCritical ? `${missingCritical} need was critical but no ${missingCritical} reached Top 5.` : selectedRankIndex < 0 ? "Selected player was unavailable, unknown, or outside the projectable ranking." : selectedRankIndex < 5 ? "Selected player was a Top 5 recommendation." : "Selected player was outside the Top 5." });
+      const availableAtDecision = selectedId !== null && playerById.has(selectedId) && !state.draftedPlayerIds.includes(selectedId) && !state.manualUnavailablePlayerIds.includes(selectedId);
+      snapshots.push({ overallPick, rosterBeforePick: [...state.myPlayerIds], positionNeedUrgency: ranking.positionNeedUrgency, feasibilitySlack: ranking.rosterFeasibility.feasibilitySlack, topFive: ranking.topRecommendations, selectedPlayerId: selectedId, availableAtDecision, selectedRank: selectedRankIndex < 0 ? null : selectedRankIndex + 1, selectedRecommendation, bestSeasonValue, bestByPosition, scarcityByPosition: ranking.scarcityByPosition, recentRuns: ranking.recentRuns, topFiveSurvivalToNextTurn, nextWindowRecallAt5, nextWindowRecallAt10, comment: missingCritical ? `${missingCritical} need was critical but no ${missingCritical} reached Top 5.` : !availableAtDecision ? "Selected player was unavailable at this decision." : selectedRankIndex < 0 ? "Selected player was unknown or outside the projectable ranking." : selectedRankIndex < 5 ? "Selected player was a Top 5 recommendation." : "Selected player was outside the Top 5." });
       state = { ...state, decisionLog: upsertDecisionSnapshot(state.decisionLog, createDecisionSnapshot(overallPick, state.myPlayerIds, { mode: "Normal", positions: [] }, ranking.topRecommendations)) };
     }
     if (!selectedId || !playerById.has(selectedId)) { warnings.push(`Pick ${overallPick}: unknown or missing player; replay continued.`); continue; }

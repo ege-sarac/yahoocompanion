@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-05T00:00:00.000Z",
+  "entries": [
+    { "playerName": "Keegan Murray", "sourceDate": "2026-10-05", "sourceLabel": "Manual preseason research", "currentHealthStatus": "HEALTHY_CLEARED", "roleContext": "EXPECTED_STARTER", "confidence": 0.75 },
+    { "playerName": "Nikola Vucevic", "sourceDate": "2026-10-05", "sourceLabel": "Manual preseason research", "roleContext": "FRONTCOURT_DEPTH", "rotationTier": "ROTATION", "confidence": 0.7 },
+    { "playerName": "Devin Vassell", "sourceDate": "2026-10-05", "sourceLabel": "Manual preseason research", "roleContext": "SIZABLE_ROLE", "confidence": 0.72 }
+  ]
+}

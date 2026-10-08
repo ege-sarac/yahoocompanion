@@ -106,6 +106,7 @@ export function draftPlayer(state: DraftState, playerId: string, config: LeagueC
   const pick: DraftPick = {
     ...draftInfo,
     playerId: normalizedPlayerId,
+    pickProvenance: draftInfo.isMyTeam ? "USER_REAL_PICK" : "OBSERVED_ROOM",
   };
 
   const shouldClearIntent = draftInfo.isMyTeam && !state.keepPositionPreferenceAfterMyPick;
@@ -310,7 +311,9 @@ function validatePick(value: unknown, index: number, config: LeagueConfig): Draf
     }
   }
 
-  return { ...expected, playerId: value.playerId.trim() };
+  const provenance = value.pickProvenance ?? (expected.isMyTeam ? "USER_REAL_PICK" : "OBSERVED_ROOM");
+  if (!["OBSERVED_ROOM", "USER_REAL_PICK", "SYNTHETIC_PADDING", "MANUAL_EXTENSION"].includes(String(provenance))) throw new Error(`Pick ${index + 1} has invalid pickProvenance.`);
+  return { ...expected, playerId: value.playerId.trim(), pickProvenance: provenance as DraftPick["pickProvenance"] };
 }
 
 function validateStringArray(

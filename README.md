@@ -103,13 +103,17 @@ Market data never changes basketball stats or raw FP/G. Optional profiles live i
 ```powershell
 npm.cmd run market:mock-import -- C:\path\to\completed-mock.json
 npm.cmd run market:import -- C:\path\to\yahoo-rank-or-adp.csv
+npm.cmd run market:yahoo-import -- "C:\Users\Ege Sarac\Downloads\consensus-rankings-points (3).csv"
+npm.cmd run market:yahoo-validate
 npm.cmd run market:learn
 npm.cmd run market:validate
 npm.cmd run market:audit -- C:\path\to\completed-mock.json
 npm.cmd run draft:audit -- C:\path\to\draft-export.json
 ```
 
-Yahoo import accepts `playerId,playerName,rank,adp,sourceDate`. NBA ID wins; without it, only one exact normalized-name match is accepted. Imports validate fully before atomic replacement. Reliable market history drives survival, with a bounded live-room positional pace adjustment. Pick-now scoring adds urgency when a player may disappear, wait/reach cost when selecting far ahead of market, and a capped one-to-two-round model-edge escape.
+Generic Yahoo import accepts `playerId,playerName,rank,adp,sourceDate`. The consensus importer also accepts `Rank, Player, vs '25, Yahoo ADP, '25-26 FPPG, Avg rank`, stores a timestamped reference envelope in `data/manual/yahooMarket.json`, and rebuilds the derived market profile without creating a mock draft. NBA ID wins; otherwise matching is normalized for accents, punctuation, and suffixes and must yield exactly one player. Imports validate fully before atomic replacement.
+
+Yahoo ADP is an external acquisition-timing signal: it creates a smooth survival curve and is reliability-blended with direct local mock picks. A thin local sample is stabilized by Yahoo; repeated local exact picks gain more authority; a large disagreement reduces confidence. External historical FP/G and consensus ranks are diagnostics only. None of these external values change basketball projections, Expected Games, VORP, or base Draft Score. Player Data shows separate Mock Mean Pick, Yahoo ADP, and historical external FP/G fields; compact Draft cards use CADP. The display-only approximate round is one-indexed: `1 + ((pick - 1) / active team count)` (for example, #165 in 16 teams is ~R11.3).
 
 Future Draft exports use a version-2 envelope with team count, rounds, slot, scoring/roster fingerprints, creation time, and compact user-pick decision snapshots. A snapshot is written only immediately before a user selection, never on search input or render. Legacy bare exports and version-1 backups remain importable.
 

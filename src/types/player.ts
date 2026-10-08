@@ -65,6 +65,11 @@ export interface Player {
   expectedReturnText?: string | null;
   returnConfidence?: import("./injurySnapshot").ReturnConfidence;
   injurySource?: import("./injurySnapshot").InjurySourceMetadata;
+  injuryAvailabilityClass?: import("./injurySnapshot").InjuryAvailabilityClass;
+  currentHealthStatus?: import("./injurySnapshot").CurrentHealthStatus;
+  expectedGamesLowOverride?: number;
+  expectedGamesBaseOverride?: number;
+  expectedGamesHighOverride?: number;
   currentInjurySource?: "manual" | "snapshot" | "default";
   historicalStats: HistoricalStats[];
   projections: Projection | null;

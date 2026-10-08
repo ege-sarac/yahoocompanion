@@ -3,7 +3,7 @@ import type { LeagueConfig, Player, PlayerRoleHistoryRecord, Projection, Project
 import { calculateFantasyPoints } from "./fantasyPoints";
 import { estimateProjectedBonusCounts } from "./projectionModel";
 import { analyzeCareerStage } from "./careerStage";
-import { projectExpectedGames } from "./expectedGames";
+import { classifyAvailabilityRisk, projectExpectedGames } from "./expectedGames";
 import { assessCurrentRole } from "./roleSecurity";
 import { DRAFT_VALUE_CONFIG } from "../config/draftValueConfig";
 import type { ExpectedGamesProjection } from "../types";
@@ -35,7 +35,7 @@ function projectNewcomerExpectedGames(player: Player, projection: Projection, co
   const status = player.injuryStatus ?? "Unknown";
   const expected = Math.min(DRAFT_VALUE_CONFIG.expectedGames.maximumGames, Math.max(DRAFT_VALUE_CONFIG.expectedGames.minimumGames, projection.projectedGames - DRAFT_VALUE_CONFIG.expectedGames.currentStatusMissedGames[status]));
   const spread = 10 + (1 - confidence) * 8 + (status === "Unknown" ? 3 : 0);
-  return { expectedGamesLow: Math.max(0, Math.round((expected - spread) * 10) / 10), expectedGames: Math.round(expected * 10) / 10, expectedGamesHigh: Math.min(DRAFT_VALUE_CONFIG.expectedGames.maximumGames, Math.round((expected + spread * .65) * 10) / 10), availabilityConfidence: Math.min(.65, confidence), availabilityRiskLabel: expected < 55 ? "HIGH RISK" : expected < 66 ? "MODERATE" : "STABLE", currentHealthVerified: Boolean(player.injuryStatus && player.injuryStatus !== "Unknown"), reasons: ["Newcomer expected games retain the separate classification and role prior."] };
+  return { expectedGamesLow: Math.max(0, Math.round((expected - spread) * 10) / 10), expectedGames: Math.round(expected * 10) / 10, expectedGamesHigh: Math.min(DRAFT_VALUE_CONFIG.expectedGames.maximumGames, Math.round((expected + spread * .65) * 10) / 10), availabilityConfidence: Math.min(.65, confidence), availabilityRiskLabel: classifyAvailabilityRisk(expected), currentHealthVerified: Boolean(player.injuryStatus && player.injuryStatus !== "Unknown"), reasons: ["Newcomer expected games retain the separate classification and role prior."] };
 }
 
 function scaleMinutes(base: Projection, adjustment: number, config: LeagueConfig): Projection {

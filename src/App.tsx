@@ -5,6 +5,7 @@ import type { PageId } from "./components/Navigation";
 import { usePlayerData } from "./data/playerLoader";
 import { useRoleData } from "./data/roleDataLoader";
 import { useMarketData } from "./data/marketDataLoader";
+import { useYahooDefaultProjections } from "./data/yahooProjectionLoader";
 import { usePlayerOverrides } from "./context/PlayerOverridesContext";
 import { useInjurySnapshot } from "./context/InjurySnapshotContext";
 import { useNewPlayerOverrides } from "./context/NewPlayerOverridesContext";
@@ -40,6 +41,7 @@ export default function App() {
   const playerData = usePlayerData();
   const roleData = useRoleData();
   const marketData = useMarketData();
+  const yahooDefaultProjections = useYahooDefaultProjections();
   const { overrides } = usePlayerOverrides();
   const { snapshot } = useInjurySnapshot();
   const { newPlayerOverrides } = useNewPlayerOverrides();
@@ -71,6 +73,7 @@ export default function App() {
         newPlayerInputs={newPlayerOverrides}
         roleData={roleData.data}
         marketData={marketData.data}
+        yahooDefaultProjections={yahooDefaultProjections}
       />
     ),
     recommendations: (
@@ -80,6 +83,7 @@ export default function App() {
         newPlayerInputs={newPlayerOverrides}
         roleData={roleData.data}
         marketData={marketData.data}
+        yahooDefaultProjections={yahooDefaultProjections}
       />
     ),
     roster: (
@@ -92,6 +96,8 @@ export default function App() {
         injuryReport={injuryReport}
         newPlayerInputs={newPlayerOverrides}
         roleData={roleData.data}
+        marketData={marketData.data}
+        yahooDefaultProjections={yahooDefaultProjections}
       />
     ),
     settings: <SettingsPage />,

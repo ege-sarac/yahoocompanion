@@ -10,6 +10,10 @@
   --surface: #ffffff;
   --green: #0f6d4d;
   --lime: #ccec77;
+  --availability-positive: #0f6d4d;
+  --availability-warning: #9a4d08;
+  --availability-danger: #b42318;
+  --availability-neutral: #66736c;
 }
 
 * {
@@ -500,6 +504,20 @@ main {
   font-size: 0.68rem;
   font-weight: 700;
 }
+
+/* Display-only Expected Games / availability severity treatment. */
+.availability-risk-positive { color: var(--availability-positive); font-weight: 700; }
+.availability-risk-warning { color: var(--availability-warning); font-weight: 700; }
+.availability-risk-danger { color: var(--availability-danger); font-weight: 700; }
+.availability-risk-neutral { color: var(--availability-neutral); font-weight: 700; }
+.on-clock-recommendations .availability-risk-positive { color: var(--availability-positive); }
+.on-clock-recommendations .availability-risk-warning { color: var(--availability-warning); }
+.on-clock-recommendations .availability-risk-danger { color: var(--availability-danger); }
+.on-clock-recommendations .availability-risk-neutral { color: var(--availability-neutral); }
+.return-confidence-inline.availability-risk-positive { color: var(--availability-positive); }
+.return-confidence-inline.availability-risk-warning { color: var(--availability-warning); }
+.return-confidence-inline.availability-risk-danger { color: var(--availability-danger); }
+.return-confidence-inline.availability-risk-neutral { color: var(--availability-neutral); }
 
 .on-clock-card-footer {
   display: flex;

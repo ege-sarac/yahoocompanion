@@ -31,4 +31,15 @@ describe("shared live-draft Position Intent placement", () => {
     expect(styles).toContain("@media (max-width: 760px)");
     expect(styles).toContain("grid-template-columns: 1fr");
   });
+
+  it("uses compact CADP labels and shared availability semantic classes in draft cards", () => {
+    expect(draftSource).toContain("formatYahooAdp");
+    expect(draftSource).toContain("getAvailabilityRiskClass");
+    expect(draftSource).toContain("Expected games <span className={getAvailabilityRiskClass");
+    expect(recommendationsSource).toContain("getAvailabilityRiskClass(recommendation.expectedGamesProjection.availabilityRiskLabel)");
+    expect(styles).toContain(".availability-risk-positive");
+    expect(styles).toContain(".availability-risk-warning");
+    expect(styles).toContain(".availability-risk-danger");
+    expect(styles).toContain(".availability-risk-neutral");
+  });
 });

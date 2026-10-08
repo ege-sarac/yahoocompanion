@@ -27,6 +27,8 @@ import type {
   RecommendationDisplayConfig,
   Projection,
   PlayerRoleHistoryRecord,
+  CurrentRoleOverride,
+  YahooDefaultProjectionDataSet,
 } from "../types";
 import { DEFAULT_LEAGUE_CONFIG } from "../config/leagueConfig";
 import { getDraftProgress } from "./draftState";
@@ -40,7 +42,10 @@ import { buildTeamEcosystem } from "./teamEcosystem";
 import { POST_MOCK_CONFIG } from "../config/postMockConfig";
 import { ROLE_PROJECTION_CONFIG } from "../config/roleProjectionConfig";
 import { applyRoleIntelligence } from "./roleProjection";
+import { applyCurrentRoleOverride } from "./currentRoleOverrides";
+import currentRoleOverridesJson from "../../data/manual/currentRoleOverrides.json";
 import { applyDraftValueProjection } from "./draftValueProjection";
+import { applyYahooProjectionBaseline } from "./yahooProjection";
 import { reconcileTeamMinutes } from "./teamMinutesBudget";
 import { calculateReplacementLevels, calculateSeasonValue } from "./seasonValue";
 import { calculateMarketTiming } from "./marketDraft";
@@ -68,11 +73,13 @@ export interface RankPlayersInput {
   positionIntent?: PositionIntent;
   teamEcosystemEnabled?: boolean;
   roleData?: PlayerRoleDataSet;
+  roleOverrides?: readonly CurrentRoleOverride[];
   teamDiversificationMode?: TeamDiversificationMode;
   preferredMaxSameTeam?: number;
   marketData?: MarketDataSet;
   decisionLog?: readonly DraftDecisionSnapshot[];
   recommendationDisplay?: RecommendationDisplayConfig;
+  yahooDefaultProjections?: YahooDefaultProjectionDataSet;
 }
 
 interface ProjectedCandidate {
@@ -89,6 +96,7 @@ interface ProjectionUniverse {
   leagueConfig: LeagueConfig;
   newPlayerInputs?: readonly NewPlayerProjectionInput[];
   roleData?: PlayerRoleDataSet;
+  yahooDefaultProjections?: YahooDefaultProjectionDataSet;
   base: ProjectedCandidate[];
   minutes: ReturnType<typeof reconcileTeamMinutes>;
   minuteAdjustedCandidates: ProjectedCandidate[];
@@ -136,18 +144,24 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
   const leagueConfig = input.leagueConfig ?? DEFAULT_LEAGUE_CONFIG;
   const unavailableIds = new Set([...input.draftedPlayerIds, ...(input.manualUnavailablePlayerIds ?? [])]);
   const cachedUniverse = input.asOfDate === undefined ? projectionUniverseCache.get(input.players) : undefined;
-  const reusableUniverse = cachedUniverse?.leagueConfig === leagueConfig && cachedUniverse.newPlayerInputs === input.newPlayerInputs && cachedUniverse.roleData === input.roleData ? cachedUniverse : undefined;
+  const reusableUniverse = cachedUniverse?.leagueConfig === leagueConfig && cachedUniverse.newPlayerInputs === input.newPlayerInputs && cachedUniverse.roleData === input.roleData && cachedUniverse.yahooDefaultProjections === input.yahooDefaultProjections ? cachedUniverse : undefined;
   const allProjectedCandidates: ProjectedCandidate[] = reusableUniverse?.base ?? (() => {
     const newPlayerInputById = new Map((input.newPlayerInputs ?? []).map((entry) => [entry.playerId, entry]));
     const roleRecordById = new Map((input.roleData?.players ?? []).map((record) => [record.playerId, record]));
+    const yahooProjectionById = new Map((input.yahooDefaultProjections?.entries ?? []).map((entry) => [entry.playerId, entry]));
     const referenceSeason = input.players.flatMap((player) => player.historicalStats.map((season) => season.season)).sort((a, b) => b.localeCompare(a))[0];
+    const configuredOverrides = Array.isArray(currentRoleOverridesJson.entries) ? currentRoleOverridesJson.entries as CurrentRoleOverride[] : [];
     return input.players.flatMap((player) => {
+      const currentOverride = configuredOverrides.find((entry) => entry.playerId === player.id || entry.playerName.toLocaleLowerCase() === player.name.toLocaleLowerCase());
+      const resolvedPlayer = currentOverride?.currentHealthStatus ? { ...player, currentHealthStatus: currentOverride.currentHealthStatus } : player;
       const newPlayerInput = newPlayerInputById.get(player.id);
-      const metrics = projectPlayerForRecommendations(player, newPlayerInput, input.asOfDate, leagueConfig);
+      const metrics = projectPlayerForRecommendations(resolvedPlayer, newPlayerInput, input.asOfDate, leagueConfig);
       if (!metrics) return [];
       const roleRecord = roleRecordById.get(player.id);
-      const roleAdjusted = applyRoleIntelligence(player, metrics, roleRecord, leagueConfig);
-      return [{ player, metrics: applyDraftValueProjection(player, roleAdjusted.metrics, roleRecord, leagueConfig, referenceSeason), newPlayerInput, roleContextSummary: roleAdjusted.summary, baseProjection: metrics.projection, roleProjection: roleAdjusted.metrics.projection, roleRecord }];
+      const yahooBaseline = applyYahooProjectionBaseline(resolvedPlayer, metrics, yahooProjectionById.get(player.id), leagueConfig);
+      const roleAdjusted = applyRoleIntelligence(resolvedPlayer, yahooBaseline, roleRecord, leagueConfig);
+      const currentRoleAdjusted = applyCurrentRoleOverride(resolvedPlayer, roleAdjusted.metrics, [...configuredOverrides, ...(input.roleOverrides ?? [])], input.asOfDate);
+      return [{ player: resolvedPlayer, metrics: applyDraftValueProjection(resolvedPlayer, currentRoleAdjusted, roleRecord, leagueConfig, referenceSeason), newPlayerInput, roleContextSummary: roleAdjusted.summary, baseProjection: metrics.projection, roleProjection: currentRoleAdjusted.projection, roleRecord }];
     });
   })();
   const minutesBudget = reusableUniverse?.minutes ?? reconcileTeamMinutes(allProjectedCandidates, leagueConfig);
@@ -204,7 +218,7 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
   );
   const rawProductionValues = intrinsicUniverse ? undefined : intrinsicCandidates.map(({ metrics }) => metrics.projection.projectedFantasyPointsPerGame).sort((left, right) => left - right);
   const eliteValueReference = intrinsicUniverse?.eliteValueReference ?? (rawProductionValues!.length > 1 ? rawProductionValues![rawProductionValues!.length - 2] : rawProductionValues![0] ?? 0);
-  if (!reusableUniverse && input.asOfDate === undefined && input.teamEcosystemEnabled === true) projectionUniverseCache.set(input.players, { leagueConfig, newPlayerInputs: input.newPlayerInputs, roleData: input.roleData, base: allProjectedCandidates, minutes: minutesBudget, minuteAdjustedCandidates, ecosystem: builtEcosystem, intrinsicCandidates, replacementLevels, seasonValueById, lowerProductionAnchor, upperProductionAnchor, eliteValueReference });
+  if (!reusableUniverse && input.asOfDate === undefined && input.teamEcosystemEnabled === true) projectionUniverseCache.set(input.players, { leagueConfig, newPlayerInputs: input.newPlayerInputs, roleData: input.roleData, yahooDefaultProjections: input.yahooDefaultProjections, base: allProjectedCandidates, minutes: minutesBudget, minuteAdjustedCandidates, ecosystem: builtEcosystem, intrinsicCandidates, replacementLevels, seasonValueById, lowerProductionAnchor, upperProductionAnchor, eliteValueReference });
   const weights = getRecommendationWeightsForProgress(draftProgress);
   const recentRuns = calculateRecentPositionRuns(input.draftPicks ?? [], input.players);
   const remainingUserPicks = getMyOverallPicks(leagueConfig).filter((pick) => pick >= currentOverallPick).length;
@@ -221,11 +235,18 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
   const productionRank = new Map([...projectedCandidates]
     .sort((a, b) => roleScenarioById.get(b.player.id)!.meanSeasonVorp - roleScenarioById.get(a.player.id)!.meanSeasonVorp)
     .map((candidate, index) => [candidate.player.id, index + 1]));
+  const intrinsicValueRank = new Map([...intrinsicCandidates]
+    .sort((left, right) => seasonValueById.get(right.player.id)!.seasonVorp - seasonValueById.get(left.player.id)!.seasonVorp)
+    .map((candidate, index) => [candidate.player.id, index + 1]));
   const tierByPlayerId = calculateTierDropoffs(projectedCandidates);
   const teamDiversificationMode = input.teamDiversificationMode ?? ROLE_PROJECTION_CONFIG.teamDiversification.defaultMode;
   const preferredMaxSameTeam = Math.max(1, Math.floor(input.preferredMaxSameTeam ?? ROLE_PROJECTION_CONFIG.teamDiversification.preferredMax));
   const myRosterCountByNbaTeam = new Map<string, number>();
   for (const player of input.myRoster) if (player.nbaTeam) myRosterCountByNbaTeam.set(player.nbaTeam, (myRosterCountByNbaTeam.get(player.nbaTeam) ?? 0) + 1);
+  const bestAvailableFpg = Math.max(0, ...projectedCandidates.map((entry) => entry.metrics.projection.projectedFantasyPointsPerGame));
+  const rosterAvailabilityLoad = input.myRoster.filter((rosterPlayer) => (allProjectedCandidates.find((entry) => entry.player.id === rosterPlayer.id)?.metrics.expectedGamesProjection?.expectedGames ?? 82) < DRAFT_VALUE_CONFIG.lateValue.highRiskGames).length;
+  const remainingBenchSlots = Math.max(0, leagueConfig.roster.BN - Math.max(0, input.myRoster.length - (leagueConfig.roster.G + leagueConfig.roster.F + leagueConfig.roster.C + leagueConfig.roster.UTIL)));
+  const unresolvedStarterSlots = rosterFeasibility.minimumPicksNeededForRestrictiveSlots;
 
   const recommendations = projectedCandidates
     .map(({ player, metrics, newPlayerInput, roleContextSummary, baseProjection, roleProjection, roleRecord }): PlayerRecommendation => {
@@ -246,7 +267,7 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
       const recentRunLabel = recentRunPressure >= 0.65 ? "Strong run" as const : recentRunPressure >= 0.3 ? "Mild run" as const : "No run" as const;
       const tier = tierByPlayerId.get(player.id) ?? { score: 50, explanation: "Eligibility unknown; tier is neutral" };
       const liveRoomSurvivalEvidence = countLiveRoomSurvivalEvidence(input.decisionLog, player.id, currentOverallPick);
-      const marketTiming = calculateMarketTiming(marketProfileById.get(player.id), leagueConfig, currentOverallPick, nextUserPick, productionRank.get(player.id) ?? projectedCandidates.length, projectedCandidates.length, input.draftPicks, player, input.players, liveRoomSurvivalEvidence);
+      const marketTiming = calculateMarketTiming(marketProfileById.get(player.id), leagueConfig, currentOverallPick, nextUserPick, productionRank.get(player.id) ?? projectedCandidates.length, projectedCandidates.length, input.draftPicks, player, input.players, liveRoomSurvivalEvidence, intrinsicValueRank.get(player.id) ?? projectedCandidates.length);
       const candidateFeasibility = analyzeCandidateFeasibility(input.myRoster, player, remainingUserPicks, availablePlayers, leagueConfig, rosterFeasibility);
       const manualPositionMatch = activeIntentPositions.some((position) => player.yahooPositions.includes(position));
       const automaticPositionNeedComponent = player.yahooPositions.length ? Math.max(...player.yahooPositions.map((position) => positionNeedUrgency[position].score)) * 100 : 0;
@@ -297,7 +318,8 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         (total, contribution) => total + contribution,
         0,
       );
-      const automaticAdjustment = positionContextComposite.contribution;
+      const lateProductionBlend = smoothLateProductionBlend(draftProgress);
+      const automaticAdjustment = positionContextComposite.contribution * (candidateFeasibility.candidateCriticalNeedMatch ? 1 : 1 - lateProductionBlend * .5);
       const feasibilityAdjustment = 0;
       const sameTeamPlayersBeforePick = player.nbaTeam ? myRosterCountByNbaTeam.get(player.nbaTeam) ?? 0 : 0;
       const sameTeamPlayersAfterPick = sameTeamPlayersBeforePick + (player.nbaTeam ? 1 : 0);
@@ -308,11 +330,28 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
       const rosterRiskCount = input.myRoster.filter((rosterPlayer) => (allProjectedCandidates.find((entry) => entry.player.id === rosterPlayer.id)?.metrics.expectedGamesProjection?.expectedGames ?? 82) < DRAFT_VALUE_CONFIG.riskConcentration.highRiskExpectedGames).length;
       const rosterRiskPenalty = expectedGamesProjection.expectedGames < DRAFT_VALUE_CONFIG.riskConcentration.highRiskExpectedGames && rosterRiskCount >= DRAFT_VALUE_CONFIG.riskConcentration.startAtCount ? Math.min(DRAFT_VALUE_CONFIG.riskConcentration.maximumPenalty, (rosterRiskCount - DRAFT_VALUE_CONFIG.riskConcentration.startAtCount + 1) * DRAFT_VALUE_CONFIG.riskConcentration.penaltyPerExtra) : 0;
       const baseScenario = roleScenarioSummary.scenarios.find((scenario) => scenario.label === "BASE") ?? roleScenarioSummary.scenarios[1];
+      const lowScenario = roleScenarioSummary.scenarios.find((scenario) => scenario.label === "LOW") ?? roleScenarioSummary.scenarios[0];
       const highScenario = roleScenarioSummary.scenarios.find((scenario) => scenario.label === "HIGH") ?? roleScenarioSummary.scenarios[2];
+      const projectedSurplusPerGame = metrics.projection.projectedFantasyPointsPerGame - seasonValue.replacementFantasyPointsPerGame;
+      const baseSurplusPerGame = (baseScenario?.projectedFantasyPointsPerGame ?? metrics.projection.projectedFantasyPointsPerGame) - seasonValue.replacementFantasyPointsPerGame;
+      const lowSurplusPerGame = (lowScenario?.projectedFantasyPointsPerGame ?? metrics.projection.projectedFantasyPointsPerGame) - seasonValue.replacementFantasyPointsPerGame;
       const highScenarioSurplusPerGame = Math.max(0, (highScenario?.projectedFantasyPointsPerGame ?? 0) - seasonValue.replacementFantasyPointsPerGame);
-      const credibleCeilingValue = Math.min(DRAFT_VALUE_CONFIG.productionDominance.credibleCeilingCap, highScenarioSurplusPerGame / 8 * (highScenario?.probability ?? 0) * roleScenarioSummary.roleSustainability * roleAssessmentSecurity(metrics) * (.65 + promotionPathProbability * .35));
+      const highVsBaseGain = Math.max(0, (highScenario?.projectedFantasyPointsPerGame ?? 0) - (baseScenario?.projectedFantasyPointsPerGame ?? 0));
+      const ceilingMagnitude = clamp((highVsBaseGain / 7) * .55 + highScenarioSurplusPerGame / 12 * .45, 0, 1);
+      const ceilingCredibility = clamp((promotionPathProbability * .35 + roleScenarioSummary.roleSustainability * .25 + roleAssessmentSecurity(metrics) * .2 + clamp(perMinuteProduction / 1.15, 0, 1) * .2) * (1 - (roleContextSummary?.absenceDependencyScore ?? 0) * .55), 0, 1);
+      const lateUpsideValue = lateProductionBlend * Math.min(DRAFT_VALUE_CONFIG.lateValue.maximumUpsideAdjustment, ceilingMagnitude * ceilingCredibility * DRAFT_VALUE_CONFIG.lateValue.maximumUpsideAdjustment);
+      const credibleCeilingValue = Math.min(DRAFT_VALUE_CONFIG.productionDominance.credibleCeilingCap, highScenarioSurplusPerGame / 8 * (highScenario?.probability ?? 0) * ceilingCredibility);
       const productionBlend = clamp((draftProgress - DRAFT_VALUE_CONFIG.productionDominance.startsAtProgress) / (1 - DRAFT_VALUE_CONFIG.productionDominance.startsAtProgress), 0, 1);
-      const productionAnchor = productionBlend * clamp(((baseScenario?.projectedFantasyPointsPerGame ?? metrics.projection.projectedFantasyPointsPerGame) - seasonValue.replacementFantasyPointsPerGame) / 10 * DRAFT_VALUE_CONFIG.productionDominance.maximumAnchorAdjustment, -DRAFT_VALUE_CONFIG.productionDominance.maximumAnchorAdjustment, DRAFT_VALUE_CONFIG.productionDominance.maximumAnchorAdjustment);
+      const riskAdjustedProduction = (metrics.projection.projectedFantasyPointsPerGame * .4 + (baseScenario?.projectedFantasyPointsPerGame ?? 0) * .35 + (lowScenario?.projectedFantasyPointsPerGame ?? 0) * .25) * (.72 + expectedGamesProjection.availabilityConfidence * .28);
+      const durabilityEfficiency = projectedSurplusPerGame * (.55 + expectedGamesProjection.expectedGames / 82 * .45) - Math.max(0, availabilityRange - 16) / 8;
+      const requiredRiskPremium = expectedGamesProjection.availabilityRiskLabel === "HIGH RISK" ? Math.max(0, (DRAFT_VALUE_CONFIG.lateValue.highRiskGames - expectedGamesProjection.expectedGames) / 12 + availabilityRange / 20) : 0;
+      const stashCapacity = clamp((remainingBenchSlots / Math.max(1, leagueConfig.roster.BN)) * .55 + (1 - unresolvedStarterSlots / Math.max(1, remainingUserPicks)) * .3 + (1 - rosterAvailabilityLoad / 3) * .15, 0, 1);
+      const longTermInjury = expectedGamesProjection.expectedGames < DRAFT_VALUE_CONFIG.lateValue.highRiskGames || player.injuryAvailabilityClass === "LATE_SEASON" || player.injuryAvailabilityClass === "MOST_OF_SEASON" || player.injuryAvailabilityClass === "FULL_SEASON";
+      const stashBurden = longTermInjury ? lateProductionBlend * Math.min(DRAFT_VALUE_CONFIG.lateValue.maximumStashBurden, (1 - stashCapacity) * 3 + rosterAvailabilityLoad * 1.2 + unresolvedStarterSlots * .8 + requiredRiskPremium) : 0;
+      const lateProductionQuality = projectedSurplusPerGame * .42 + baseSurplusPerGame * .32 + lowSurplusPerGame * .16 + clamp(roleScenarioSummary.meanSeasonVorp / 120, -2, 2) * .1;
+      const productionAnchor = lateProductionBlend * clamp(lateProductionQuality / 8 * DRAFT_VALUE_CONFIG.lateValue.maximumProductionAdjustment, -DRAFT_VALUE_CONFIG.lateValue.maximumProductionAdjustment, DRAFT_VALUE_CONFIG.lateValue.maximumProductionAdjustment);
+      const pickNowQualityFloorAdjustment = lateProductionBlend * (projectedSurplusPerGame < (bestAvailableFpg - seasonValue.replacementFantasyPointsPerGame) - 5 ? -Math.min(3, ((bestAvailableFpg - metrics.projection.projectedFantasyPointsPerGame) - 5) * .5) : 0);
+      const lateRoundDominanceAdjustment = lateProductionBlend * clamp(baseSurplusPerGame * .3 + Math.max(0, expectedGamesProjection.expectedGames - DRAFT_VALUE_CONFIG.lateValue.highRiskGames) / 30 - requiredRiskPremium, -DRAFT_VALUE_CONFIG.lateValue.maximumDominanceAdjustment, DRAFT_VALUE_CONFIG.lateValue.maximumDominanceAdjustment);
        const nonProductionStackTotal = contributions.opportunity + contributions.breakout + contributions.confidence + contributions.flexibility + roleScenarioSummary.optionScoreAdjustment;
       const nonProductionStackCap = productionBlend ? DRAFT_VALUE_CONFIG.productionDominance.nonProductionCapMiddle + (DRAFT_VALUE_CONFIG.productionDominance.nonProductionCapLate - DRAFT_VALUE_CONFIG.productionDominance.nonProductionCapMiddle) * productionBlend : Number.POSITIVE_INFINITY;
       const nonProductionStackPenalty = Math.max(0, nonProductionStackTotal - nonProductionStackCap);
@@ -320,7 +359,7 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
       const endgameBlend = clamp((DRAFT_VALUE_CONFIG.productionDominance.endgameRoundsRemaining - roundsRemaining + 1) / DRAFT_VALUE_CONFIG.productionDominance.endgameRoundsRemaining, 0, 1);
        const lateHoldabilityAdjustment = endgameBlend * clamp(((baseScenario?.projectedFantasyPointsPerGame ?? 0) - seasonValue.replacementFantasyPointsPerGame) / 7 + credibleCeilingValue * .35 + promotionPathProbability * 1.5 - currentDepthCompetition * 1.5 - availabilityTailPenalty * .2, -3, 3);
        const endgameUtility = endgameBlend * clamp(Math.max((baseScenario?.projectedFantasyPointsPerGame ?? 0) - seasonValue.replacementFantasyPointsPerGame, highScenarioSurplusPerGame * (highScenario?.probability ?? 0)) / 8 * 3 + lateHoldabilityAdjustment, -3, 3);
-       const finalScore = baseFinalScore + roleScenarioSummary.optionScoreAdjustment + automaticAdjustment + marketTiming.draftNowUrgency - marketTiming.waitValue - marketTiming.liveWaitCost - marketTiming.reachCost + manualPositionPriorityComponent + feasibilityAdjustment + teamDiversificationComponent - rosterRiskPenalty - availabilityTailPenalty + productionAnchor + credibleCeilingValue - nonProductionStackPenalty + endgameUtility;
+       const finalScore = baseFinalScore + roleScenarioSummary.optionScoreAdjustment + automaticAdjustment + marketTiming.draftNowUrgency - marketTiming.waitValue - marketTiming.liveWaitCost - marketTiming.reachCost + manualPositionPriorityComponent + feasibilityAdjustment + teamDiversificationComponent - rosterRiskPenalty - availabilityTailPenalty + productionAnchor + credibleCeilingValue + lateUpsideValue + lateRoundDominanceAdjustment + pickNowQualityFloorAdjustment - stashBurden - nonProductionStackPenalty + endgameUtility;
       const scoreBreakdown = {
         weightedComponents: contributions,
         optionValue: roleScenarioSummary.optionScoreAdjustment,
@@ -338,11 +377,16 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
          nonProductionStackPenalty: -nonProductionStackPenalty,
          lateHoldability: lateHoldabilityAdjustment,
          endgameUtility,
+        lateProductionQuality: productionAnchor,
+        lateUpside: lateUpsideValue,
+        stashBurden: -stashBurden,
+        dominance: lateRoundDominanceAdjustment,
+        qualityFloor: pickNowQualityFloorAdjustment,
         preAdjustmentScore: baseFinalScore,
         finalDraftScore: finalScore,
         reconciliationResidual: 0,
       };
-       scoreBreakdown.reconciliationResidual = finalScore - (scoreBreakdown.preAdjustmentScore + scoreBreakdown.optionValue + scoreBreakdown.availabilityTail + scoreBreakdown.positionContext + scoreBreakdown.marketUrgency + scoreBreakdown.historicalWait + scoreBreakdown.liveWait + scoreBreakdown.reach + scoreBreakdown.teamDiversification + scoreBreakdown.manualPositionIntent + scoreBreakdown.rosterRisk + scoreBreakdown.productionAnchor + scoreBreakdown.credibleCeiling + scoreBreakdown.nonProductionStackPenalty + scoreBreakdown.endgameUtility);
+       scoreBreakdown.reconciliationResidual = finalScore - (scoreBreakdown.preAdjustmentScore + scoreBreakdown.optionValue + scoreBreakdown.availabilityTail + scoreBreakdown.positionContext + scoreBreakdown.marketUrgency + scoreBreakdown.historicalWait + scoreBreakdown.liveWait + scoreBreakdown.reach + scoreBreakdown.teamDiversification + scoreBreakdown.manualPositionIntent + scoreBreakdown.rosterRisk + scoreBreakdown.productionAnchor + scoreBreakdown.credibleCeiling + scoreBreakdown.lateUpside + scoreBreakdown.stashBurden + scoreBreakdown.dominance + scoreBreakdown.qualityFloor + scoreBreakdown.nonProductionStackPenalty + scoreBreakdown.endgameUtility);
 
       return {
         player,
@@ -424,6 +468,25 @@ export function rankPlayers(input: RankPlayersInput): RecommendationResult {
         rawCeilingSignal,
         rawRoleSignal,
         lateHoldabilityAdjustment,
+        lateProductionBlend,
+        projectedSurplusPerGame,
+        baseSurplusPerGame,
+        lowSurplusPerGame,
+        highSurplusPerGame: highScenarioSurplusPerGame,
+        lateProductionQuality,
+        riskAdjustedProduction,
+        durabilityEfficiency,
+        requiredRiskPremium,
+        stashCapacity,
+        stashBurden,
+        rosterAvailabilityLoad,
+        highVsBaseGain,
+        ceilingMagnitude,
+        ceilingCredibility,
+        lateUpsideValue,
+        lateValueClassification: classifyLateValue(baseSurplusPerGame, highScenarioSurplusPerGame, lateUpsideValue, stashBurden),
+        lateRoundDominanceAdjustment,
+        pickNowQualityFloorAdjustment,
         dominanceWarning: false,
       };
     })
@@ -567,6 +630,20 @@ function roleAssessmentSecurity(metrics: ProjectionMetrics): number {
 
 function productionBlendForDraft(draftProgress: number): number {
   return clamp((draftProgress - DRAFT_VALUE_CONFIG.productionDominance.startsAtProgress) / (1 - DRAFT_VALUE_CONFIG.productionDominance.startsAtProgress), 0, 1);
+}
+
+function smoothLateProductionBlend(draftProgress: number): number {
+  const config = DRAFT_VALUE_CONFIG.lateValue;
+  const progress = clamp((draftProgress - config.startsAtProgress) / (config.fullStrengthProgress - config.startsAtProgress), 0, 1);
+  return progress * progress * (3 - 2 * progress);
+}
+
+function classifyLateValue(baseSurplus: number, highSurplus: number, upside: number, stashBurden: number): "CORE_PRODUCTION" | "BALANCED_VALUE" | "UPSIDE_TARGET" | "INJURY_STASH" | "WAIVER_LEVEL" {
+  if (stashBurden >= 3.5) return "INJURY_STASH";
+  if (baseSurplus <= 0 && highSurplus < 2 && upside < 1) return "WAIVER_LEVEL";
+  if (baseSurplus >= 4) return "CORE_PRODUCTION";
+  if (upside >= 2.2 && highSurplus >= 4) return "UPSIDE_TARGET";
+  return "BALANCED_VALUE";
 }
 
 export function calculateAvailabilityDownsideGap(

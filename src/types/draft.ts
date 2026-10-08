@@ -1,3 +1,5 @@
+export type DraftPickProvenance = "OBSERVED_ROOM" | "USER_REAL_PICK" | "SYNTHETIC_PADDING" | "MANUAL_EXTENSION";
+
 export interface DraftPick {
   overallPick: number;
   round: number;
@@ -5,6 +7,8 @@ export interface DraftPick {
   teamNumber: number;
   playerId: string;
   isMyTeam: boolean;
+  /** Describes whether this pick is genuine room evidence or only board state. */
+  pickProvenance?: DraftPickProvenance;
 }
 
 export interface DraftState {

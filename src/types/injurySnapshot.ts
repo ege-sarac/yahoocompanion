@@ -1,6 +1,8 @@
 import type { InjuryStatus } from "./player";
 
 export type ReturnConfidence = "high" | "medium" | "low" | "unknown";
+export type InjuryAvailabilityClass = "DAY_TO_DAY" | "OPENING_WEEKS" | "FIRST_QUARTER" | "MIDSEASON" | "LATE_SEASON" | "MOST_OF_SEASON" | "FULL_SEASON" | "RETURN_RAMP" | "UNKNOWN";
+export type CurrentHealthStatus = "HEALTHY_CLEARED" | "FULL_PARTICIPATION" | "RETURNING_SOON" | "RETURN_RAMP" | "LIMITED" | "INJURED" | "OUT_LONG_TERM" | "UNKNOWN";
 export type InjuryMatchMethod =
   | "playerId"
   | "exact-name"
@@ -24,6 +26,11 @@ export interface InjurySnapshotEntry {
   sourcePublishedAt?: string | null;
   fetchedOrReviewedAt: string;
   notes?: string | null;
+  availabilityClass?: InjuryAvailabilityClass;
+  currentHealthStatus?: CurrentHealthStatus;
+  expectedGamesLowOverride?: number;
+  expectedGamesBaseOverride?: number;
+  expectedGamesHighOverride?: number;
 }
 
 export interface InjurySnapshot {

@@ -69,11 +69,13 @@ export { assignRosterSlots } from "./rosterAssignment";
 export { analyzeCandidateFeasibility, analyzeRosterFeasibility, calculatePositionNeedUrgency } from "./rosterFeasibility";
 export { buildPlayerRoleProfile, buildTeamEcosystem } from "./teamEcosystem";
 export { analyzeCareerStage, getCareerStage } from "./careerStage";
-export { projectExpectedGames, projectMajorInjuryComeback } from "./expectedGames";
+export { classifyAvailabilityRisk, projectExpectedGames, projectMajorInjuryComeback } from "./expectedGames";
 export { assessCurrentRole } from "./roleSecurity";
 export { reconcileTeamMinutes, type TeamMinutesBudgetResult } from "./teamMinutesBudget";
 export { calculateReplacementLevels, calculateSeasonValue, type SeasonValueCandidate } from "./seasonValue";
 export { calculateMarketTiming, createRosterFingerprint, createScoringFingerprint, learnMarketProfiles, normalizeDraftProgress, overallPickToRoundEquivalent, parseMockDraft, progressToOverallPick, progressToRoundEquivalent, roundEquivalentToOverallPick, validateMarketDataSet, validateMarketProfile } from "./marketDraft";
+export { approximateRoundFromPick, formatYahooAdp } from "./marketDisplay";
+export { applyYahooProjectionBaseline } from "./yahooProjection";
 export { calculatePositionContextComposite, type PositionContextInput } from "./positionContext";
 export { createDecisionSnapshot, upsertDecisionSnapshot } from "./decisionLog";
 export { appendRecommendationTrace, createRecommendationTrace, createRecommendationTraceSnapshot, serializeRecommendationTraceExport, RECOMMENDATION_ENGINE_VERSION, RECOMMENDATION_TRACE_SCHEMA_VERSION } from "./recommendationTrace";
@@ -82,6 +84,7 @@ export { calculateProjectionSanity, calculateRecentSeasonFantasyPPG, type Projec
 export { replayDraft, type DraftReplayResult, type DraftReplaySnapshot } from "./draftReplay";
 export { analyzeLateSeasonRegime, calculateTeammateDependencies } from "./lateSeasonRegime";
 export { applyRoleIntelligence } from "./roleProjection";
+export { applyCurrentRoleOverride, roleOverrideFreshness } from "./currentRoleOverrides";
 export { matchesPlayerName, normalizeSearchText } from "./textSearch";
 export { calculateRecentPositionRuns } from "./draftSignals";
 export {

@@ -33,7 +33,7 @@ export function SettingsPage() {
     setMessage("YahooCompanion defaults restored.");
   }
 
-  const setRoot = (key: "teamCount" | "userDraftSlot" | "rounds", value: number) => setDraft((current) => ({ ...current, [key]: value }));
+  const setRoot = (key: "teamCount" | "userDraftSlot" | "rounds" | "externalProjectionFallbackThreshold", value: number) => setDraft((current) => ({ ...current, [key]: value }));
   return <section className="page settings-page" aria-labelledby="settings-heading">
     <div className="page-heading"><div><p className="eyebrow">Local league profile</p><h2 id="settings-heading">League Settings</h2><p>Every draft, projection, roster, and recommendation calculation uses this profile.</p></div></div>
     {state.picks.length > 0 && <div className="model-warning">An active draft has {state.picks.length} picks. Structural draft changes require an explicit reset; scoring and roster-fit changes can be applied safely.</div>}
@@ -49,6 +49,10 @@ export function SettingsPage() {
       </SettingsGroup>
       <SettingsGroup title="H2H points scoring">
         {(Object.keys(draft.scoring) as Array<keyof LeagueConfig["scoring"]>).map((key) => <NumberField key={key} label={key} step={0.1} value={draft.scoring[key]} onChange={(value) => setDraft((current) => ({ ...current, scoring: { ...current.scoring, [key]: value } }))} />)}
+      </SettingsGroup>
+      <SettingsGroup title="External projection fallback">
+        <NumberField label="External Projection Fallback Gap (FP/G)" min={0} max={10} step={0.1} value={draft.externalProjectionFallbackThreshold} onChange={(value) => setRoot("externalProjectionFallbackThreshold", value)} />
+        <p className="settings-summary">When the app's FP/G projection differs from the external projection by more than this amount, use the external production baseline. Lower values select external projections more often.</p>
       </SettingsGroup>
       <fieldset className="settings-group"><legend>Draft strategy</legend><div className="settings-checks">
         <label><input checked={state.keepPositionPreferenceAfterMyPick} onChange={(event) => updatePreferences({ keepPositionPreferenceAfterMyPick: event.target.checked })} type="checkbox" /> Keep position preference after my pick</label>
@@ -74,4 +78,4 @@ export function SettingsPage() {
 }
 
 function SettingsGroup({ title, children }: { title: string; children: React.ReactNode }) { return <fieldset className="settings-group"><legend>{title}</legend><div className="settings-grid">{children}</div></fieldset>; }
-function NumberField({ label, value, onChange, step = 1 }: { label: string; value: number; onChange: (value: number) => void; step?: number }) { return <label>{label}<input type="number" step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
+function NumberField({ label, value, onChange, step = 1, min, max }: { label: string; value: number; onChange: (value: number) => void; step?: number; min?: number; max?: number }) { return <label>{label}<input type="number" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>; }

@@ -12,6 +12,7 @@ import { useLeagueConfig } from "../context/LeagueConfigContext";
 import { useDraft } from "../context/DraftContext";
 import { PositionIntentControls } from "../components/PositionIntentControls";
 import { DraftRepair } from "../components/DraftRepair";
+import { getAvailabilityRiskClass } from "../components/availabilityRisk";
 import type { PlayerDataSource } from "../data/playerLoader";
 import {
   deriveMyRoster,
@@ -22,9 +23,10 @@ import {
   rankPlayers,
   createDecisionSnapshot,
   createRecommendationTraceSnapshot,
+  formatYahooAdp,
   serializeRecommendationTraceExport,
 } from "../engine";
-import type { MarketDataSet, NewPlayerProjectionInput, Player, PlayerRoleDataSet } from "../types";
+import type { MarketDataSet, NewPlayerProjectionInput, Player, PlayerRoleDataSet, YahooDefaultProjectionDataSet } from "../types";
 
 interface DraftPageProps {
   players: Player[];
@@ -32,9 +34,10 @@ interface DraftPageProps {
   newPlayerInputs: readonly NewPlayerProjectionInput[];
   roleData?: PlayerRoleDataSet;
   marketData?: MarketDataSet;
+  yahooDefaultProjections?: YahooDefaultProjectionDataSet;
 }
 
-export function DraftPage({ players, dataSource, newPlayerInputs, roleData, marketData }: DraftPageProps) {
+export function DraftPage({ players, dataSource, newPlayerInputs, roleData, marketData, yahooDefaultProjections }: DraftPageProps) {
   const { config } = useLeagueConfig();
   const {
     state,
@@ -54,6 +57,10 @@ export function DraftPage({ players, dataSource, newPlayerInputs, roleData, mark
   const playerById = useMemo(
     () => new Map(players.map((player) => [player.id, player])),
     [players],
+  );
+  const yahooAdpByPlayerId = useMemo(
+    () => new Map((marketData?.profiles ?? []).map((profile) => [profile.playerId, profile.yahooADP])),
+    [marketData],
   );
   const availablePlayers = useMemo(() => {
     if (!query.trim()) return [];
@@ -92,12 +99,18 @@ export function DraftPage({ players, dataSource, newPlayerInputs, roleData, mark
       teamDiversificationMode: state.teamDiversificationMode,
       preferredMaxSameTeam: state.preferredMaxSameTeam,
       marketData,
+      yahooDefaultProjections,
       decisionLog: state.decisionLog,
       recommendationDisplay: state.recommendationDisplay,
     });
-  }, [config, currentRound, dataSource, marketData, myRoster, newPlayerInputs, players, roleData, state.currentOverallPick, state.decisionLog, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.preferredMaxSameTeam, state.recommendationDisplay, state.teamDiversificationMode, state.teamEcosystemEnabled]);
+  }, [config, currentRound, dataSource, marketData, myRoster, newPlayerInputs, players, roleData, state.currentOverallPick, state.decisionLog, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.preferredMaxSameTeam, state.recommendationDisplay, state.teamDiversificationMode, state.teamEcosystemEnabled, yahooDefaultProjections]);
   const topDraftRecommendations = draftRecommendationResult?.topRecommendations ?? [];
   const recommendationRankById = useMemo(() => new Map((draftRecommendationResult?.recommendations ?? []).map((recommendation, index) => [recommendation.player.id, index + 1])), [draftRecommendationResult]);
+  const productionWatch = useMemo(() => {
+    if (!draftRecommendationResult || draftRecommendationResult.draftProgress < .45) return [];
+    const visible = new Set([...topDraftRecommendations, ...draftRecommendationResult.alternativeRecommendations.map((entry) => entry.recommendation)].map((entry) => entry.player.id));
+    return draftRecommendationResult.recommendations.filter((entry) => !visible.has(entry.player.id)).sort((left, right) => right.projection.projectedFantasyPointsPerGame - left.projection.projectedFantasyPointsPerGame).slice(0, 3);
+  }, [draftRecommendationResult, topDraftRecommendations]);
 
   function selectPlayer(player: Player) {
     try {
@@ -250,12 +263,12 @@ export function DraftPage({ players, dataSource, newPlayerInputs, roleData, mark
             {topDraftRecommendations.map((recommendation, index) => (
               <article key={recommendation.player.id}>
                 <span className="on-clock-rank">#{recommendationRankById.get(recommendation.player.id) ?? index + 1}</span>
-                <strong>{recommendation.player.name}</strong>
+                <strong>{recommendation.player.name} <b className="yahoo-adp-inline">{formatYahooAdp(yahooAdpByPlayerId.get(recommendation.player.id), config.teamCount)}</b></strong>
                 <small>
                   {recommendation.player.yahooPositions.join(" / ") || "Eligibility missing"}
                   {" | "}{recommendation.projection.projectedFantasyPointsPerGame.toFixed(1)} FP/G
                 </small>
-                <small>Expected games {recommendation.expectedGamesProjection.expectedGames.toFixed(0)} · {recommendation.expectedGamesProjection.availabilityRiskLabel} · Season value {recommendation.seasonValue.availabilityAdjustedFantasyPointsEquivalent.toFixed(1)}</small>
+                <small>Expected games <span className={getAvailabilityRiskClass(recommendation.expectedGamesProjection.availabilityRiskLabel)}>{recommendation.expectedGamesProjection.expectedGames.toFixed(0)}</span> · <span className={getAvailabilityRiskClass(recommendation.expectedGamesProjection.availabilityRiskLabel)}>{recommendation.expectedGamesProjection.availabilityRiskLabel}</span> · Season value {recommendation.seasonValue.availabilityAdjustedFantasyPointsEquivalent.toFixed(1)}</small>
                 <small>{recommendation.marketTiming.marketRoundLow === null ? recommendation.marketTiming.marketEvidenceLabel : `Market R${recommendation.marketTiming.marketRoundLow.toFixed(1)}-${recommendation.marketTiming.marketRoundHigh!.toFixed(1)}`} · {recommendation.survivalLabel}{recommendation.marketTiming.liveWaitCost > 0 ? ` · wait ${recommendation.marketTiming.liveWaitCost.toFixed(1)}` : ""}</small>
                 <small>Upside: {recommendation.roleScenarioSummary.upsideLabel.toLowerCase()} · role sustainability {(recommendation.roleScenarioSummary.roleSustainability * 100).toFixed(0)}%</small>
                 <p className="on-clock-reasons">{(recommendation.explanations.length ? recommendation.explanations : ["Model favors the projected value at this pick."]).slice(0, 2).map((reason) => <span key={reason}>{reason}</span>)}</p>
@@ -282,11 +295,17 @@ export function DraftPage({ players, dataSource, newPlayerInputs, roleData, mark
               <div>
                 {draftRecommendationResult.alternativeRecommendations.map(({ recommendation }) => (
                   <article key={recommendation.player.id}>
-                    <strong>{recommendation.player.name}</strong>
-                    <small>#{recommendationRankById.get(recommendation.player.id) ?? "—"} · {recommendation.player.yahooPositions.join(" / ") || "Eligibility missing"} · {recommendation.projection.projectedFantasyPointsPerGame.toFixed(1)} FP/G · Score {recommendation.finalScore.toFixed(1)}</small>
+                    <strong>{recommendation.player.name} <b className="yahoo-adp-inline">{formatYahooAdp(yahooAdpByPlayerId.get(recommendation.player.id), config.teamCount)}</b></strong>
+                    <small>#{recommendationRankById.get(recommendation.player.id) ?? "—"} · {recommendation.player.yahooPositions.join(" / ") || "Eligibility missing"} · {recommendation.projection.projectedFantasyPointsPerGame.toFixed(1)} FP/G · Expected games <span className={getAvailabilityRiskClass(recommendation.expectedGamesProjection.availabilityRiskLabel)}>{recommendation.expectedGamesProjection.expectedGames.toFixed(0)}</span> · <span className={getAvailabilityRiskClass(recommendation.expectedGamesProjection.availabilityRiskLabel)}>{recommendation.expectedGamesProjection.availabilityRiskLabel}</span> · Score {recommendation.finalScore.toFixed(1)}</small>
                   </article>
                 ))}
               </div>
+            </div>
+          )}
+          {productionWatch.length > 0 && (
+            <div className="late-alternatives" aria-label="Production watch">
+              <p>Production Watch</p>
+              <div>{productionWatch.map((recommendation) => <article key={recommendation.player.id}><strong>#{recommendationRankById.get(recommendation.player.id)} {recommendation.player.name} <b className="yahoo-adp-inline">{formatYahooAdp(yahooAdpByPlayerId.get(recommendation.player.id), config.teamCount)}</b></strong><small>{recommendation.projection.projectedFantasyPointsPerGame.toFixed(1)} FP/G · <span className={getAvailabilityRiskClass(recommendation.expectedGamesProjection.availabilityRiskLabel)}>{recommendation.expectedGamesProjection.expectedGames.toFixed(0)} GP</span> · <span className={getAvailabilityRiskClass(recommendation.expectedGamesProjection.availabilityRiskLabel)}>{recommendation.expectedGamesProjection.availabilityRiskLabel}</span> · {recommendation.marketTiming.timingLabel ?? recommendation.survivalLabel}</small></article>)}</div>
             </div>
           )}
         </section>

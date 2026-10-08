@@ -96,4 +96,47 @@ describe("Prompt 10.5 production and timing calibration", () => {
       expect(secondTrace.topCandidates).toEqual(firstTrace.topCandidates);
     }
   });
+
+  it("gives censor-only late evidence real WAIT without inventing an ADP", () => {
+    const profile = { playerId: "censored-only", normalizedObservations: Array.from({ length: 5 }, () => ({ draftProgress: 1, roundEquivalent: 14, teamCount: 14, rounds: 13, rightCensored: true })) };
+    const timing = calculateMarketTiming(profile, DEFAULT_LEAGUE_CONFIG, 106, 119, 90, 500);
+    expect(timing.marketPickEstimate).toBeNull();
+    expect(timing.targetWindowCenter).toBeNull();
+    expect(timing.targetWindowLowerBound).toBe(182);
+    expect(timing.censorDerivedWait).toBeGreaterThan(0);
+    expect(timing.waitOpportunityCost).toBeGreaterThan(0);
+  });
+
+  it("uses one late exact observation plus censoring as directional WAIT evidence", () => {
+    const profile = { playerId: "late-plus-censored", normalizedObservations: [{ draftProgress: .78, roundEquivalent: 11, teamCount: 14, rounds: 13, rightCensored: false }, ...Array.from({ length: 4 }, () => ({ draftProgress: 1, roundEquivalent: 14, teamCount: 14, rounds: 13, rightCensored: true }))] };
+    const timing = calculateMarketTiming(profile, DEFAULT_LEAGUE_CONFIG, 106, 119, 90, 500);
+    expect(timing.marketPickEstimate).toBeNull();
+    expect(timing.exactMarketDerivedWait).toBeGreaterThan(0);
+    expect(timing.censorDerivedWait).toBeGreaterThan(0);
+    expect(timing.waitOpportunityCost).toBeGreaterThan(3);
+  });
+
+  it("makes a multi-turn target wait more than a next-turn target", () => {
+    const far = { playerId: "far", normalizedObservations: Array.from({ length: 5 }, () => ({ draftProgress: normalizeDraftProgress(170, 16, 15), roundEquivalent: 11.6, teamCount: 16, rounds: 15, rightCensored: false })) };
+    const near = { playerId: "near", normalizedObservations: Array.from({ length: 5 }, () => ({ draftProgress: normalizeDraftProgress(119, 16, 15), roundEquivalent: 8.4, teamCount: 16, rounds: 15, rightCensored: false })) };
+    const farTiming = calculateMarketTiming(far, DEFAULT_LEAGUE_CONFIG, 106, 119, 90, 500);
+    const nearTiming = calculateMarketTiming(near, DEFAULT_LEAGUE_CONFIG, 106, 119, 90, 500);
+    expect(farTiming.userTurnsUntilTargetWindow).toBe(4);
+    expect(farTiming.waitOpportunityCost).toBeGreaterThan(nearTiming.waitOpportunityCost!);
+  });
+
+  it("allows an elite intrinsic rank to escape part of a multi-turn WAIT", () => {
+    const profile = { playerId: "edge", normalizedObservations: Array.from({ length: 5 }, () => ({ draftProgress: normalizeDraftProgress(170, 16, 15), roundEquivalent: 11.6, teamCount: 16, rounds: 15, rightCensored: false })) };
+    const ordinary = calculateMarketTiming(profile, DEFAULT_LEAGUE_CONFIG, 106, 119, 90, 500, [], undefined, [], 0, 90);
+    const elite = calculateMarketTiming(profile, DEFAULT_LEAGUE_CONFIG, 106, 119, 90, 500, [], undefined, [], 0, 1);
+    expect(elite.waitOpportunityCost).toBeLessThan(ordinary.waitOpportunityCost!);
+  });
+
+  it("strengthens censor-derived timing after current-room survival", () => {
+    const profile = { playerId: "room", normalizedObservations: Array.from({ length: 5 }, () => ({ draftProgress: 1, roundEquivalent: 14, teamCount: 14, rounds: 13, rightCensored: true })) };
+    const before = calculateMarketTiming(profile, DEFAULT_LEAGUE_CONFIG, 106, 119, 90, 500);
+    const after = calculateMarketTiming(profile, DEFAULT_LEAGUE_CONFIG, 106, 119, 90, 500, [], undefined, [], 2);
+    expect(after.waitOpportunityCost).toBeGreaterThan(before.waitOpportunityCost!);
+    expect(after.liveRoomDerivedWait).toBeGreaterThan(0);
+  });
 });

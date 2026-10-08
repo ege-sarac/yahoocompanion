@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { useLeagueConfig } from "../context/LeagueConfigContext";
 import { useDraft } from "../context/DraftContext";
 import { PositionIntentControls } from "../components/PositionIntentControls";
+import { getAvailabilityRiskClass } from "../components/availabilityRisk";
 import type { PlayerDataSource } from "../data/playerLoader";
 import {
   deriveMyRoster,
@@ -10,6 +11,7 @@ import {
   getPicksUntilMyNextPick,
   getRecommendationStage,
   rankPlayers,
+  formatYahooAdp,
 } from "../engine";
 import type {
   NewPlayerProjectionInput,
@@ -17,6 +19,7 @@ import type {
   RecommendationContributions,
   PlayerRoleDataSet,
   MarketDataSet,
+  YahooDefaultProjectionDataSet,
 } from "../types";
 
 interface RecommendationsPageProps {
@@ -25,6 +28,7 @@ interface RecommendationsPageProps {
   newPlayerInputs: readonly NewPlayerProjectionInput[];
   roleData?: PlayerRoleDataSet;
   marketData?: MarketDataSet;
+  yahooDefaultProjections?: YahooDefaultProjectionDataSet;
 }
 
 const CONTRIBUTION_LABELS: ReadonlyArray<{
@@ -50,6 +54,7 @@ export function RecommendationsPage({
   newPlayerInputs,
   roleData,
   marketData,
+  yahooDefaultProjections,
 }: RecommendationsPageProps) {
   const { config } = useLeagueConfig();
   const { state, markUnavailable } = useDraft();
@@ -79,9 +84,10 @@ export function RecommendationsPage({
         teamDiversificationMode: state.teamDiversificationMode,
         preferredMaxSameTeam: state.preferredMaxSameTeam,
         marketData,
+        yahooDefaultProjections,
         decisionLog: state.decisionLog,
       }),
-    [config, currentRound, dataSource, marketData, myRoster, newPlayerInputs, players, roleData, state.currentOverallPick, state.decisionLog, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.preferredMaxSameTeam, state.teamDiversificationMode, state.teamEcosystemEnabled],
+    [config, currentRound, dataSource, marketData, myRoster, newPlayerInputs, players, roleData, state.currentOverallPick, state.decisionLog, state.draftedPlayerIds, state.manualUnavailablePlayerIds, state.picks, state.positionIntent, state.preferredMaxSameTeam, state.teamDiversificationMode, state.teamEcosystemEnabled, yahooDefaultProjections],
   );
   const topRecommendations = result.topRecommendations;
   const stage = getRecommendationStage(currentRound, config);
@@ -159,6 +165,7 @@ export function RecommendationsPage({
                   <th>Expected games</th>
                   <th>Season value</th>
                   <th>Market cost</th>
+                  <th>Yahoo ADP</th>
                   <th>MPG</th>
                   <th>History risk</th>
                   <th>Injury status</th>
@@ -259,9 +266,10 @@ export function RecommendationsPage({
                       )}
                       <small className="return-confidence-inline">{formatRange(recommendation.projection.projectedFantasyPointsPerGameLow, recommendation.projection.projectedFantasyPointsPerGameHigh)}</small>
                     </td>
-                    <td>{recommendation.expectedGamesProjection.expectedGames.toFixed(1)}<small className="return-confidence-inline">{recommendation.expectedGamesProjection.expectedGamesLow.toFixed(0)}-{recommendation.expectedGamesProjection.expectedGamesHigh.toFixed(0)} · {recommendation.expectedGamesProjection.availabilityRiskLabel}</small></td>
+                    <td><span className={getAvailabilityRiskClass(recommendation.expectedGamesProjection.availabilityRiskLabel)}>{recommendation.expectedGamesProjection.expectedGames.toFixed(1)}</span><small className={`return-confidence-inline ${getAvailabilityRiskClass(recommendation.expectedGamesProjection.availabilityRiskLabel)}`}>{recommendation.expectedGamesProjection.expectedGamesLow.toFixed(0)}-{recommendation.expectedGamesProjection.expectedGamesHigh.toFixed(0)} · {recommendation.expectedGamesProjection.availabilityRiskLabel}</small></td>
                     <td>{recommendation.seasonValue.availabilityAdjustedFantasyPointsEquivalent.toFixed(1)}<small className="return-confidence-inline">VORP {recommendation.seasonValue.seasonVorp.toFixed(0)} · replacement {recommendation.seasonValue.replacementFantasyPointsPerGame.toFixed(1)}</small></td>
                     <td>{recommendation.marketTiming.marketPickEstimate === null ? "-" : `~${recommendation.marketTiming.marketPickEstimate}`}<small className="return-confidence-inline">{recommendation.marketTiming.marketPickEstimate === null ? recommendation.marketTiming.marketEvidenceLabel : `${recommendation.marketTiming.valueLabel} · ${recommendation.marketTiming.marketEvidenceLevel}`}</small></td>
+                    <td><b>{formatYahooAdp(recommendation.marketTiming.yahooAdp, config.teamCount)}</b></td>
                     <td>{recommendation.projection.projectedMinutes.toFixed(1)}<small className="return-confidence-inline">{formatRange(recommendation.projection.projectedMinutesLow, recommendation.projection.projectedMinutesHigh)}</small></td>
                     <td>
                       {formatPercent(recommendation.historicalAvailabilityRisk)}

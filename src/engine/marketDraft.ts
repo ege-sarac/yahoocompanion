@@ -1,5 +1,6 @@
 import { DRAFT_VALUE_CONFIG } from "../config/draftValueConfig";
 import type { DraftPick, LeagueConfig, MarketDataSet, MarketFormat, MarketPlayerProfile, MarketTimingProjection, MockDraftRecord, Player } from "../types";
+import { getMyOverallPicks, getUserPickSchedule } from "./draftOrder";
 
 export function createScoringFingerprint(scoring: LeagueConfig["scoring"]): string {
   return (Object.keys(scoring) as Array<keyof typeof scoring>).sort().map((key) => `${key}:${trim(scoring[key])}`).join("|");
@@ -32,13 +33,19 @@ export function validateMarketDataSet(value: unknown): MarketDataSet {
 export function validateMarketProfile(value: unknown): MarketPlayerProfile {
   if (!record(value) || typeof value.playerId !== "string" || !value.playerId.trim()) throw new Error("Every market profile requires playerId.");
   const output: MarketPlayerProfile = { playerId: value.playerId.trim() };
-  for (const key of ["yahooPreRank", "yahooADP", "mockMedianPick", "mockMeanPick", "mockRoundEquivalentMedian", "mockRoundEquivalentLow", "mockRoundEquivalentHigh", "sampleCount"] as const) if (value[key] !== undefined) output[key] = finite(value[key], key);
+  for (const key of ["yahooPreRank", "yahooADP", "mockMedianPick", "mockMeanPick", "mockRoundEquivalentMedian", "mockRoundEquivalentLow", "mockRoundEquivalentHigh", "sampleCount", "externalHistoricalFantasyPointsPerGame", "externalConsensusRank", "externalRank"] as const) if (value[key] !== undefined) output[key] = finite(value[key], key);
   if (value.format !== undefined) { if (!["points", "category", "unknown"].includes(String(value.format))) throw new Error("Invalid market format."); output.format = value.format as MarketFormat; }
-  for (const key of ["scoringFingerprint", "updatedAt", "source"] as const) if (typeof value[key] === "string") output[key] = value[key];
+  for (const key of ["scoringFingerprint", "updatedAt", "source", "externalRankChangeVsPrior"] as const) if (typeof value[key] === "string") output[key] = value[key];
   for (const key of ["observedRoundEquivalents", "observedOverallPicks", "rightCensoredRoundEquivalents"] as const) if (value[key] !== undefined) { if (!Array.isArray(value[key]) || value[key].some((item) => typeof item !== "number" || !Number.isFinite(item))) throw new Error(`${key} must contain finite numbers.`); output[key] = [...value[key]] as number[]; }
   if (value.normalizedObservations !== undefined) {
-    if (!Array.isArray(value.normalizedObservations) || value.normalizedObservations.some((item) => !record(item) || ![item.draftProgress, item.roundEquivalent, item.teamCount, item.rounds].every((entry) => typeof entry === "number" && Number.isFinite(entry)) || typeof item.rightCensored !== "boolean")) throw new Error("normalizedObservations must contain valid source-aware observations.");
-    output.normalizedObservations = value.normalizedObservations.map((item) => ({ draftProgress: Math.max(0, Math.min(1, Number(item.draftProgress))), roundEquivalent: Number(item.roundEquivalent), teamCount: Number(item.teamCount), rounds: Number(item.rounds), rightCensored: Boolean(item.rightCensored) }));
+    if (!Array.isArray(value.normalizedObservations) || value.normalizedObservations.some((item) => !record(item) || ![item.teamCount, item.rounds].every((entry) => typeof entry === "number" && Number.isFinite(entry)) || typeof item.rightCensored !== "boolean")) throw new Error("normalizedObservations must contain valid source-aware observations.");
+    output.normalizedObservations = value.normalizedObservations.map((item) => {
+      const legacy = typeof item.draftProgress === "number" && typeof item.roundEquivalent === "number";
+      const absolute = item.rightCensored ? item.censorThreshold : item.overallPick;
+      if (!legacy && (typeof absolute !== "number" || !Number.isFinite(absolute) || absolute < 1)) throw new Error("Market observation requires an absolute pick or censor threshold.");
+      if (item.source !== undefined && !["USER_MOCK", "EXTERNAL_REFERENCE", "CURRENT_ROOM", "YAHOO_REFERENCE", "OTHER_REFERENCE"].includes(String(item.source))) throw new Error("Invalid market observation source.");
+      return { overallPick: typeof item.overallPick === "number" ? item.overallPick : undefined, censorThreshold: typeof item.censorThreshold === "number" ? item.censorThreshold : undefined, teamCount: Number(item.teamCount), rounds: Number(item.rounds), rightCensored: Boolean(item.rightCensored), source: item.source as MarketPlayerProfile["normalizedObservations"] extends Array<infer T> ? T extends { source?: infer S } ? S : never : never, confidence: typeof item.confidence === "number" ? clamp01(item.confidence) : undefined, asOfDate: typeof item.asOfDate === "string" ? item.asOfDate : undefined, draftProgress: legacy ? clamp01(Number(item.draftProgress)) : undefined, roundEquivalent: typeof item.roundEquivalent === "number" ? Number(item.roundEquivalent) : undefined };
+    });
   }
   return output;
 }
@@ -115,7 +122,9 @@ function validateHistoricalPicks(values: unknown[], teamCount: number, rounds: n
     if (!overallPick || !round || !pickInRound || !teamNumber) throw new Error(`Pick ${index + 1} has invalid structural metadata.`);
     const expectedRound = Math.ceil((index + 1) / teamCount), expectedPick = ((index) % teamCount) + 1, expectedTeam = expectedRound % 2 === 0 ? teamCount - expectedPick + 1 : expectedPick;
     if (overallPick !== index + 1 || round !== expectedRound || pickInRound !== expectedPick || teamNumber !== expectedTeam) throw new Error(`Pick ${index + 1} violates the expected ${teamCount}-team snake order.`);
-    return { overallPick, round, pickInRound, teamNumber, playerId: value.playerId.trim(), isMyTeam: Boolean(value.isMyTeam) };
+    const pickProvenance = value.pickProvenance === "SYNTHETIC_PADDING" || value.pickProvenance === "MANUAL_EXTENSION" ? value.pickProvenance : Boolean(value.isMyTeam) ? "USER_REAL_PICK" : "OBSERVED_ROOM";
+    if (pickProvenance === "SYNTHETIC_PADDING" || pickProvenance === "MANUAL_EXTENSION") throw new Error(`Pick ${index + 1} is synthetic/manual-extension data and is not eligible for market learning.`);
+    return { overallPick, round, pickInRound, teamNumber, playerId: value.playerId.trim(), isMyTeam: Boolean(value.isMyTeam), pickProvenance: pickProvenance as DraftPick["pickProvenance"] };
   });
   if (new Set(picks.map((pick) => pick.playerId)).size !== picks.length) throw new Error("Draft contains duplicate player selections.");
   return picks;
@@ -140,7 +149,7 @@ function makeMock(values: unknown[], teamCount: number, rounds: number, format: 
     const overallPick = typeof value.overallPick === "number" ? value.overallPick : index + 1;
     const round = Math.ceil(overallPick / teamCount), pickInRound = ((overallPick - 1) % teamCount) + 1;
     const reverse = round % 2 === 0;
-    return [{ overallPick, round, pickInRound, teamNumber: reverse ? teamCount - pickInRound + 1 : pickInRound, playerId: value.playerId.trim(), isMyTeam: Boolean(value.isMyTeam) }];
+    return [{ overallPick, round, pickInRound, teamNumber: reverse ? teamCount - pickInRound + 1 : pickInRound, playerId: value.playerId.trim(), isMyTeam: Boolean(value.isMyTeam), pickProvenance: (value.pickProvenance === "SYNTHETIC_PADDING" || value.pickProvenance === "MANUAL_EXTENSION" ? value.pickProvenance : Boolean(value.isMyTeam) ? "USER_REAL_PICK" : "OBSERVED_ROOM") as DraftPick["pickProvenance"] }];
   });
   return { teamCount, rounds, format, picks };
 }
@@ -160,76 +169,128 @@ export function learnMarketProfiles(players: readonly Player[], drafts: readonly
       if (match) {
         const roundEquivalent = overallPickToRoundEquivalent(match.overallPick, draft.teamCount);
         observed.push(roundEquivalent); observedOverallPicks.push(match.overallPick);
-        normalizedObservations.push({ draftProgress: normalizeDraftProgress(match.overallPick, draft.teamCount, draft.rounds), roundEquivalent, teamCount: draft.teamCount, rounds: draft.rounds, rightCensored: false });
+        normalizedObservations.push({ overallPick: match.overallPick, roundEquivalent, teamCount: draft.teamCount, rounds: draft.rounds, rightCensored: false, source: "USER_MOCK" });
       } else {
         censored.push(draft.rounds + 1);
-        normalizedObservations.push({ draftProgress: 1, roundEquivalent: draft.rounds + 1, teamCount: draft.teamCount, rounds: draft.rounds, rightCensored: true });
+        normalizedObservations.push({ censorThreshold: draft.teamCount * draft.rounds, roundEquivalent: draft.rounds + 1, teamCount: draft.teamCount, rounds: draft.rounds, rightCensored: true, source: "USER_MOCK" });
       }
       weightedSamples += weight;
     }
     const yahoo = yahooById.get(player.id);
     if (!observed.length && !censored.length && !yahoo) continue;
-    const normalizedRoundValues = targetConfig
-      ? normalizedObservations.filter((entry) => !entry.rightCensored).map((entry) => progressToRoundEquivalent(entry.draftProgress, targetConfig))
-      : observed;
-    const sorted = [...normalizedRoundValues].sort((a, b) => a - b);
+    const normalizedPickValues = normalizedObservations.filter((entry) => !entry.rightCensored).map((entry) => entry.overallPick!).filter((pick) => Number.isFinite(pick));
+    const sorted = [...normalizedPickValues].sort((a, b) => a - b);
     const yahooRound = yahoo?.yahooADP && targetConfig ? overallPickToRoundEquivalent(yahoo.yahooADP, targetConfig.teamCount) : yahoo?.yahooPreRank && targetConfig ? overallPickToRoundEquivalent(yahoo.yahooPreRank, targetConfig.teamCount) : undefined;
-    const prior = yahooRound ?? DRAFT_VALUE_CONFIG.market.broadPriorRound;
-    const empiricalMean = normalizedRoundValues.length ? normalizedRoundValues.reduce((sum, value) => sum + value, 0) / normalizedRoundValues.length : prior;
+    const prior = yahoo?.yahooADP ?? yahoo?.yahooPreRank ?? (targetConfig ? roundEquivalentToOverallPick(DRAFT_VALUE_CONFIG.market.broadPriorRound, targetConfig.teamCount) : 120);
+    const empiricalMean = normalizedPickValues.length ? normalizedPickValues.reduce((sum, value) => sum + value, 0) / normalizedPickValues.length : prior;
     const hasEstimate = observed.length >= 2 || yahooRound !== undefined;
     const priorWeight = yahooRound === undefined ? DRAFT_VALUE_CONFIG.market.empiricalPriorSamples : DRAFT_VALUE_CONFIG.market.yahooPriorWeight;
     const shrunk = hasEstimate ? (empiricalMean * weightedSamples + prior * priorWeight) / Math.max(.001, weightedSamples + priorWeight) : undefined;
-    profiles.push({ ...yahoo, playerId: player.id, ...(shrunk === undefined ? {} : { mockRoundEquivalentMedian: shrunk, mockRoundEquivalentLow: sorted.length >= 3 ? quantile(sorted, .25) : Math.max(1, shrunk - DRAFT_VALUE_CONFIG.market.broadPriorSpreadRounds * (1 - confidence(weightedSamples)) * .5), mockRoundEquivalentHigh: sorted.length >= 3 ? quantile(sorted, .75) : shrunk + DRAFT_VALUE_CONFIG.market.broadPriorSpreadRounds * (1 - confidence(weightedSamples)) * .5, mockMedianPick: targetConfig ? roundEquivalentToOverallPick(shrunk, targetConfig.teamCount) : undefined, mockMeanPick: targetConfig ? roundEquivalentToOverallPick(empiricalMean, targetConfig.teamCount) : undefined }), sampleCount: drafts.length, format: "points", scoringFingerprint: targetConfig ? createScoringFingerprint(targetConfig.scoring) : undefined, updatedAt: new Date().toISOString(), source: yahoo ? "mock history + Yahoo prior" : "mock history observation", observedRoundEquivalents: observed, observedOverallPicks, rightCensoredRoundEquivalents: censored, normalizedObservations });
+    profiles.push({ ...yahoo, playerId: player.id, ...(shrunk === undefined ? {} : { mockRoundEquivalentMedian: targetConfig ? overallPickToRoundEquivalent(shrunk, targetConfig.teamCount) : undefined, mockRoundEquivalentLow: targetConfig ? overallPickToRoundEquivalent(sorted.length >= 3 ? quantile(sorted, .25) : Math.max(1, shrunk - 20), targetConfig.teamCount) : undefined, mockRoundEquivalentHigh: targetConfig ? overallPickToRoundEquivalent(sorted.length >= 3 ? quantile(sorted, .75) : shrunk + 20, targetConfig.teamCount) : undefined, mockMedianPick: shrunk, mockMeanPick: empiricalMean }), sampleCount: drafts.length, format: "points", scoringFingerprint: targetConfig ? createScoringFingerprint(targetConfig.scoring) : undefined, updatedAt: new Date().toISOString(), source: yahoo ? "mock history + Yahoo prior" : "mock history observation", observedRoundEquivalents: observed, observedOverallPicks, rightCensoredRoundEquivalents: censored, normalizedObservations });
   }
   return { schemaVersion: 1, generatedAt: new Date().toISOString(), mockDraftCount: drafts.length, yahooRanksLoaded: yahooProfiles.length, matchingScoringSamples: targetConfig ? drafts.filter((draft) => !draft.scoringFingerprint || draft.scoringFingerprint === createScoringFingerprint(targetConfig.scoring)).length : 0, profiles, warnings: [] };
 }
 
-export function calculateMarketTiming(profile: MarketPlayerProfile | undefined, config: LeagueConfig, currentPick: number, nextUserPick: number | null, modelValueRank: number, modelPoolSize: number, draftPicks: readonly DraftPick[] = [], player?: Player, playerPool: readonly Player[] = [], liveRoomSurvivalEvidence = 0): MarketTimingProjection {
+export function calculateMarketTiming(profile: MarketPlayerProfile | undefined, config: LeagueConfig, currentPick: number, nextUserPick: number | null, modelValueRank: number, modelPoolSize: number, draftPicks: readonly DraftPick[] = [], player?: Player, playerPool: readonly Player[] = [], liveRoomSurvivalEvidence = 0, intrinsicValueRank = modelValueRank): MarketTimingProjection {
+  void draftPicks; void player; void playerPool; void nextUserPick;
   if (!profile) return modelOnlyTiming(currentPick, nextUserPick, modelValueRank, modelPoolSize, liveRoomSurvivalEvidence);
-  const yahooPick = profile.yahooADP ?? profile.yahooPreRank;
-  const yahooRound = yahooPick ? overallPickToRoundEquivalent(yahooPick, config.teamCount) : undefined;
-  const normalized = normalizedMarketObservations(profile, config);
-  const observed = normalized.filter((entry) => !entry.rightCensored), censored = normalized.filter((entry) => entry.rightCensored);
-  const sample = (observed.length + censored.length) || (profile.sampleCount ?? 0);
-  // Legacy generated profiles may still carry a shrunken median from one mock. Treat that as an observation, not an ADP estimate.
-  const mockRound = sample <= 1 && yahooRound === undefined ? undefined : profile.mockRoundEquivalentMedian;
-  const marketConfidence = clamp01((sample / DRAFT_VALUE_CONFIG.market.fullConfidenceSamples) * .75 + (yahooRound ? .2 : 0));
-  const marketEvidenceLevel = sample <= 0 ? "NONE" as const : sample === 1 && !yahooRound ? "VERY_LOW" as const : marketConfidence < .35 ? "LOW" as const : marketConfidence < .65 ? "MEDIUM" as const : "HIGH" as const;
-  const marketEvidenceLabel = observationLabel(profile, marketEvidenceLevel);
-  const timingDirectionConfidence = clamp01((observed.length + censored.length * .8 + liveRoomSurvivalEvidence * 1.25) / 5);
-  const blendedRound = mockRound !== undefined && yahooRound !== undefined ? mockRound * (.55 + marketConfidence * .25) + yahooRound * (.45 - marketConfidence * .25) : mockRound ?? yahooRound;
-  const currentRound = overallPickToRoundEquivalent(currentPick, config.teamCount);
-  const nextRound = nextUserPick === null ? null : overallPickToRoundEquivalent(nextUserPick, config.teamCount);
-  const nextProgress = nextUserPick === null ? null : normalizeDraftProgress(nextUserPick, config.teamCount, config.rounds);
-  const timingBlend = smoothTimingBlend(normalizeDraftProgress(currentPick, config.teamCount, config.rounds));
-  if (blendedRound === undefined) {
-    const survival = nextProgress === null ? 0 : shrunkSurvival(normalized, nextProgress, liveRoomSurvivalEvidence);
-    const adjustmentCap = marketEvidenceLevel === "VERY_LOW" ? 2 : 0;
-    const waitValue = nextRound === null ? 0 : survival >= .65 ? Math.min(adjustmentCap, (survival - .65) / .35 * adjustmentCap) : 0;
-    const liveWaitCost = calculateLiveWaitCost(currentPick, nextUserPick, survival, liveRoomSurvivalEvidence, modelValueRank);
-    const waitOpportunityCost = Math.min(DRAFT_VALUE_CONFIG.market.maximumWaitOpportunityCost, (waitValue + liveWaitCost) * timingBlend);
-    return { marketPickEstimate: null, marketRoundLow: null, marketRoundHigh: null, marketConfidence, marketCostRank: null, modelValueRank, valueLabel: "UNKNOWN", survivalEstimate: Math.round(survival * 100), survivalConfidence: Math.max(.15, Math.min(.45, .15 + liveRoomSurvivalEvidence * .1)), survivalSource: "MARKET_HISTORY", survivalLabel: lowSampleSurvivalLabel(survival), draftNowUrgency: 0, waitValue: Math.max(0, waitOpportunityCost - liveWaitCost), reachCost: 0, marketEvidenceLabel, marketEvidenceLevel, conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost, marketPrecisionConfidence: marketConfidence, timingDirectionConfidence, survivalNextTurn: survival, survivalTwoTurns: nextUserPick === null ? 0 : shrunkSurvival(normalized, normalizeDraftProgress(nextUserPick + Math.max(1, nextUserPick - currentPick), config.teamCount, config.rounds), liveRoomSurvivalEvidence), waitOpportunityCost, timingLabel: timingLabel(survival, waitOpportunityCost, nextUserPick), timingBlend };
+  const observations = absoluteMarketObservations(profile, config);
+  const exact = observations.filter((entry) => !entry.rightCensored), censored = observations.filter((entry) => entry.rightCensored);
+  const schedule = getUserPickSchedule(currentPick, config).remainingUserPicks;
+  if (!schedule.length) return zeroTiming(profile, modelValueRank, liveRoomSurvivalEvidence);
+  const estimateValues = exact.map((entry) => entry.overallPick).sort((a, b) => a - b);
+  const sample = exact.length + censored.length;
+  const storedSample = Math.max(sample, profile.sampleCount ?? 0);
+  const yahooAdp = profile.yahooADP ?? profile.yahooPreRank ?? null;
+  const localExactEstimate = estimateValues.length ? quantile(estimateValues, .5) : null;
+  // Preserve the old low-sample guard: one local observation is directional
+  // evidence, not an invented ADP. It becomes a blend input only when Yahoo
+  // independently supplies an external timing reference.
+  const learnedLocalEstimate = exact.length >= 2
+    ? localExactEstimate
+    : !observations.length && storedSample >= 2
+      ? profile.mockMedianPick ?? (profile.mockRoundEquivalentMedian === undefined ? null : roundEquivalentToOverallPick(profile.mockRoundEquivalentMedian, config.teamCount))
+      : null;
+  // Yahoo is a stable external timing reference, while completed local mocks remain the
+  // stronger evidence as their direct sample grows. We never turn Yahoo ADP into a fake pick.
+  const localWeight = localExactEstimate !== null ? Math.min(6, estimateValues.length * .9) : 0;
+  const yahooWeight = yahooAdp === null ? 0 : DRAFT_VALUE_CONFIG.market.yahooReferenceWeight;
+  const localBlendEstimate = localExactEstimate ?? learnedLocalEstimate;
+  const estimate = localBlendEstimate !== null && yahooAdp !== null
+    ? (localBlendEstimate * localWeight + yahooAdp * yahooWeight) / Math.max(.001, localWeight + yahooWeight)
+    : learnedLocalEstimate ?? yahooAdp;
+  const marketSourceGap = localBlendEstimate !== null && yahooAdp !== null ? Math.abs(localBlendEstimate - yahooAdp) : null;
+  const marketSourceAgreement = marketSourceGap === null ? null : clamp01(1 - marketSourceGap / 80);
+  const yahooSurvivalAt = (pick: number) => yahooAdp === null ? null : clamp01(1 / (1 + Math.exp((pick - yahooAdp) / Math.max(9, config.teamCount * .85))));
+  const survivalPath = schedule.map((pick) => {
+    const local = survivalAt(observations, pick, liveRoomSurvivalEvidence);
+    const yahooSurvival = yahooSurvivalAt(pick);
+    if (yahooSurvival === null) return { overallPick: pick, ...local };
+    if (!observations.length) return { overallPick: pick, survival: yahooSurvival, evidenceCount: 1 };
+    const localSurvivalWeight = Math.min(6, observations.length * .9);
+    return { overallPick: pick, survival: clamp01((local.survival * localSurvivalWeight + yahooSurvival * yahooWeight) / Math.max(.001, localSurvivalWeight + yahooWeight)), evidenceCount: local.evidenceCount + 1 };
+  });
+  const first = survivalPath[0], second = survivalPath[1], third = survivalPath[2];
+  const frontier = deriveFrontier(survivalPath);
+  const low = estimateValues.length ? quantile(estimateValues, .25) : null, high = estimateValues.length ? quantile(estimateValues, .75) : null;
+  const marketConfidence = clamp01(sample / DRAFT_VALUE_CONFIG.market.fullConfidenceSamples * .65 + (estimate !== null ? .12 : 0) + (yahooAdp === null ? 0 : .18) - (marketSourceAgreement === null ? 0 : (1 - marketSourceAgreement) * .18));
+  const disagreement = estimateValues.length > 1 ? Math.min(.35, (estimateValues[estimateValues.length - 1] - estimateValues[0]) / 180) : 0;
+  const timingDirectionConfidence = clamp01((sample + liveRoomSurvivalEvidence) / 6 * (1 - disagreement));
+  const liveWaitCost = calculateLiveWaitCost(currentPick, first.overallPick, first.survival, liveRoomSurvivalEvidence, intrinsicValueRank);
+  const wait = frontierWait({ exactCount: exact.length, censoredCount: censored.length, path: survivalPath, frontier, confidence: timingDirectionConfidence, liveWaitCost, intrinsicValueRank });
+  const modelEdge = estimate === null ? 0 : estimate - modelValueRank;
+  const targetWindow = { censoredSurvivalLowerBound: censored.length ? Math.min(...censored.map((entry) => entry.overallPick)) : null, targetWindowStart: low, targetWindowCenter: estimate, targetWindowEnd: high, targetWindowLowerBound: censored.length ? Math.min(...censored.map((entry) => entry.overallPick)) : null, userTurnsUntilTargetWindow: frontier.userTurnsBeforeFrontier };
+  const label: NonNullable<MarketTimingProjection["timingLabel"]> = frontier.acquisitionFrontierPick !== null && frontier.userTurnsBeforeFrontier >= 3 && first.survival >= .62 ? "TARGET LATER" : first.survival < .42 ? "DRAFT NOW" : frontier.acquisitionFrontierPick === first.overallPick ? "WINDOW APPROACHING" : "LIKELY TO SURVIVE";
+  const evidenceLevel = sample === 1 && estimate === null ? "VERY_LOW" as const : sample ? marketConfidence < .35 ? "LOW" as const : "MEDIUM" as const : "NONE" as const;
+  const edgeEscape = clamp01((DRAFT_VALUE_CONFIG.market.modelEdgeFullStrengthRanks - intrinsicValueRank + 1) / DRAFT_VALUE_CONFIG.market.modelEdgeFullStrengthRanks) * DRAFT_VALUE_CONFIG.market.maxConvictionReachRounds;
+  const reachCost = estimate !== null ? Math.max(0, (estimate - currentPick) / Math.max(1, config.teamCount) - edgeEscape) * .1 : 0;
+  return { yahooAdp, mockMeanPick: profile.mockMeanPick ?? localBlendEstimate, combinedMarketPickEstimate: estimate, marketSourceGap, marketSourceAgreement, externalHistoricalFantasyPointsPerGame: profile.externalHistoricalFantasyPointsPerGame ?? null, marketPickEstimate: estimate, marketRoundLow: low === null ? null : overallPickToRoundEquivalent(low, config.teamCount), marketRoundHigh: high === null ? null : overallPickToRoundEquivalent(high, config.teamCount), marketConfidence, marketCostRank: estimate, modelValueRank, valueLabel: modelEdge >= 35 ? "SLEEPER" : modelEdge >= 18 ? "MODEL VALUE" : modelEdge <= -20 ? "OVERPRICED" : estimate === null ? "UNKNOWN" : "FAIR", survivalEstimate: Math.round(first.survival * 100), survivalConfidence: first.evidenceCount ? timingDirectionConfidence : .2, survivalSource: yahooAdp !== null && observations.length ? "BLENDED_MARKET" : yahooAdp !== null ? "YAHOO_ADP" : estimate !== null ? "MARKET_HISTORY" : "MODEL_ONLY", survivalLabel: survivalLabel(first.survival, timingDirectionConfidence), draftNowUrgency: frontier.acquisitionFrontierPick === first.overallPick && estimate !== null ? Math.min(2, (1 - first.survival) * 3) : 0, waitValue: wait.historicalWait, reachCost, marketEvidenceLabel: observationLabel(profile, evidenceLevel), marketEvidenceLevel: evidenceLevel, conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost, marketPrecisionConfidence: marketConfidence, timingDirectionConfidence, survivalNextTurn: first.survival, survivalTwoTurns: second?.survival ?? 0, survivalThirdTurn: third?.survival ?? 0, waitOpportunityCost: wait.total, timingLabel: label, timingBlend: 1, ...targetWindow, ...wait, futureUserPickSurvival: survivalPath, lastSafeUserPick: frontier.lastSafeUserPick, acquisitionFrontierPick: frontier.acquisitionFrontierPick, userTurnsBeforeFrontier: frontier.userTurnsBeforeFrontier };
+}
+
+type AbsoluteObservation = { overallPick: number; rightCensored: boolean; source: string };
+function absoluteMarketObservations(profile: MarketPlayerProfile, target: LeagueConfig): AbsoluteObservation[] {
+  if (profile.normalizedObservations?.length) return profile.normalizedObservations.flatMap((entry) => {
+    const legacyPick = entry.draftProgress === undefined ? undefined : Math.round(entry.draftProgress * Math.max(1, entry.teamCount * entry.rounds - 1) + 1);
+    const overallPick = entry.rightCensored ? entry.censorThreshold ?? legacyPick : entry.overallPick ?? legacyPick;
+    return overallPick && overallPick > 0 ? [{ overallPick, rightCensored: entry.rightCensored, source: entry.source ?? "USER_MOCK" }] : [];
+  });
+  return [
+    ...(profile.observedOverallPicks ?? profile.observedRoundEquivalents?.map((round) => roundEquivalentToOverallPick(round, target.teamCount)) ?? []).map((overallPick) => ({ overallPick, rightCensored: false, source: "USER_MOCK" })),
+    ...(profile.rightCensoredRoundEquivalents ?? []).map((round) => ({ overallPick: roundEquivalentToOverallPick(Math.max(1, round - 1), target.teamCount), rightCensored: true, source: "USER_MOCK" })),
+  ];
+}
+function survivalAt(observations: readonly AbsoluteObservation[], pick: number, liveEvidence: number): { survival: number; evidenceCount: number } {
+  const informative = observations.filter((entry) => !entry.rightCensored || entry.overallPick >= pick);
+  if (!informative.length) return { survival: liveEvidence ? clamp01(.5 + liveEvidence * .08) : .5, evidenceCount: 0 };
+  const survived = informative.filter((entry) => entry.overallPick >= pick).length;
+  return { survival: clamp01((survived + 1.5 + liveEvidence * .85) / (informative.length + 3 + liveEvidence * .85)), evidenceCount: informative.length };
+}
+function deriveFrontier(path: Array<{ overallPick: number; survival: number; evidenceCount: number }>): { lastSafeUserPick: number | null; acquisitionFrontierPick: number | null; userTurnsBeforeFrontier: number } {
+  const safe = path.filter((entry) => entry.evidenceCount > 0 && entry.survival >= DRAFT_VALUE_CONFIG.market.acquisitionSafetyThreshold);
+  const lastSafeUserPick = safe.length ? safe[safe.length - 1].overallPick : null;
+  let acquisitionFrontierPick: number | null = null;
+  for (let index = 0; index < path.length - 1; index++) {
+    const current = path[index], next = path[index + 1];
+    if (current.evidenceCount > 0 && current.survival >= DRAFT_VALUE_CONFIG.market.acquisitionSafetyThreshold && (next.evidenceCount === 0 || next.survival < DRAFT_VALUE_CONFIG.market.acquisitionSafetyThreshold || current.survival - next.survival >= DRAFT_VALUE_CONFIG.market.frontierDangerDrop)) { acquisitionFrontierPick = current.overallPick; break; }
   }
-  const roomAdjustment = calculateRoomPaceAdjustment(draftPicks, player, playerPool, config);
-  const adjustedRound = Math.max(1, blendedRound + roomAdjustment);
-  const estimate = roundEquivalentToOverallPick(adjustedRound, config.teamCount);
-  let survivalEstimate = nextProgress === null ? 0 : shrunkSurvival(normalized, nextProgress, liveRoomSurvivalEvidence, adjustedRound, currentRound, marketConfidence, config.rounds);
-  if (liveRoomSurvivalEvidence) survivalEstimate = Math.max(survivalEstimate, Math.min(.9, .68 + liveRoomSurvivalEvidence * .08));
-  const survivalSource = mockRound !== undefined && yahooRound !== undefined ? "BLENDED_MARKET" as const : mockRound !== undefined ? "MARKET_HISTORY" as const : "YAHOO_ADP" as const;
-  const survivalConfidence = clamp01(Math.max(marketConfidence * (observed.length ? 1 : .72), liveRoomSurvivalEvidence ? .35 : 0));
-  const roundsEarly = adjustedRound - currentRound;
-  const modelEdge = estimate - modelValueRank;
-  const escapeRounds = DRAFT_VALUE_CONFIG.market.maxConvictionReachRounds * clamp01(modelEdge / DRAFT_VALUE_CONFIG.market.modelEdgeFullStrengthRanks) * marketConfidence;
-  const effectiveEarly = Math.max(0, roundsEarly - escapeRounds);
-  // Market data is a small tie-breaker until a richer, independent corpus exists.
-  const adjustmentCap = 2;
-  const reachCost = Math.min(adjustmentCap, effectiveEarly / Math.max(1, DRAFT_VALUE_CONFIG.market.maxConvictionReachRounds) * DRAFT_VALUE_CONFIG.market.maximumReachPenalty);
-  const urgency = survivalEstimate <= DRAFT_VALUE_CONFIG.market.urgencyLikelyThreshold ? Math.min(adjustmentCap, (DRAFT_VALUE_CONFIG.market.urgencyLikelyThreshold - survivalEstimate) / DRAFT_VALUE_CONFIG.market.urgencyLikelyThreshold * DRAFT_VALUE_CONFIG.market.maximumUrgencyBonus) : 0;
-  const liveWaitCost = calculateLiveWaitCost(currentPick, nextUserPick, survivalEstimate, liveRoomSurvivalEvidence, modelValueRank);
-  const historicalWait = nextRound === null ? 0 : survivalEstimate >= DRAFT_VALUE_CONFIG.market.waitLikelyThreshold ? DRAFT_VALUE_CONFIG.market.maximumWaitOpportunityCost * Math.pow((survivalEstimate - DRAFT_VALUE_CONFIG.market.waitLikelyThreshold) / (1 - DRAFT_VALUE_CONFIG.market.waitLikelyThreshold), .8) * (.35 + timingDirectionConfidence * .65) : 0;
-  const waitOpportunityCost = Math.min(DRAFT_VALUE_CONFIG.market.maximumWaitOpportunityCost, (historicalWait + liveWaitCost) * timingBlend);
-  const survivalTwoTurns = nextUserPick === null ? 0 : shrunkSurvival(normalized, normalizeDraftProgress(nextUserPick + Math.max(1, nextUserPick - currentPick), config.teamCount, config.rounds), liveRoomSurvivalEvidence, adjustedRound, currentRound, marketConfidence, config.rounds);
-  return { marketPickEstimate: estimate, marketRoundLow: profile.mockRoundEquivalentLow ?? Math.max(1, adjustedRound - 1.5), marketRoundHigh: profile.mockRoundEquivalentHigh ?? adjustedRound + 1.5, marketConfidence, marketCostRank: estimate, modelValueRank, valueLabel: modelEdge >= 35 ? "SLEEPER" : modelEdge >= 18 ? "MODEL VALUE" : modelEdge <= -20 ? "OVERPRICED" : "FAIR", survivalEstimate: Math.round(survivalEstimate * 100), survivalConfidence, survivalSource, survivalLabel: survivalLabel(survivalEstimate, survivalConfidence), draftNowUrgency: urgency, waitValue: Math.max(0, waitOpportunityCost - liveWaitCost), reachCost, marketEvidenceLabel, marketEvidenceLevel, conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost, marketPrecisionConfidence: marketConfidence, timingDirectionConfidence, survivalNextTurn: survivalEstimate, survivalTwoTurns, waitOpportunityCost, timingLabel: timingLabel(survivalEstimate, waitOpportunityCost, nextUserPick), timingBlend };
+  acquisitionFrontierPick ??= lastSafeUserPick;
+  return { lastSafeUserPick, acquisitionFrontierPick, userTurnsBeforeFrontier: acquisitionFrontierPick === null ? 0 : path.findIndex((entry) => entry.overallPick === acquisitionFrontierPick) + 1 };
+}
+function frontierWait(input: { exactCount: number; censoredCount: number; path: Array<{ overallPick: number; survival: number; evidenceCount: number }>; frontier: ReturnType<typeof deriveFrontier>; confidence: number; liveWaitCost: number; intrinsicValueRank: number }): Pick<MarketTimingProjection, "censorDerivedWait" | "exactMarketDerivedWait" | "liveRoomDerivedWait" | "multiTurnTargetDistanceWait" | "alternativeUrgencyWait"> & { historicalWait: number; total: number } {
+  const max = DRAFT_VALUE_CONFIG.market.maximumWaitOpportunityCost;
+  const first = input.path[0];
+  const survivalStrength = clamp01((first.survival - .5) / .5);
+  const distance = clamp01((input.frontier.userTurnsBeforeFrontier - 1) / 3);
+  const exactMarketDerivedWait = input.exactCount ? max * .55 * survivalStrength * input.confidence : 0;
+  const censorDerivedWait = input.censoredCount ? max * .48 * survivalStrength * input.confidence * Math.min(1, input.censoredCount / 3) : 0;
+  const multiTurnTargetDistanceWait = max * .4 * distance * survivalStrength * input.confidence;
+  const alternativeUrgencyWait = 0;
+  const escape = input.intrinsicValueRank <= DRAFT_VALUE_CONFIG.market.liveWait.eliteRankCutoff ? DRAFT_VALUE_CONFIG.market.liveWait.eliteRankEscape : 0;
+  const historicalWait = Math.min(input.exactCount + input.censoredCount <= 1 ? 2 : max, (exactMarketDerivedWait + censorDerivedWait + multiTurnTargetDistanceWait) * (1 - escape));
+  return { censorDerivedWait, exactMarketDerivedWait, liveRoomDerivedWait: input.liveWaitCost, multiTurnTargetDistanceWait, alternativeUrgencyWait, historicalWait, total: Math.min(max, historicalWait + input.liveWaitCost) };
+}
+function zeroTiming(profile: MarketPlayerProfile, rank: number, liveEvidence: number): MarketTimingProjection {
+  return { marketPickEstimate: null, marketRoundLow: null, marketRoundHigh: null, marketConfidence: 0, marketCostRank: null, modelValueRank: rank, valueLabel: "UNKNOWN", survivalEstimate: 0, survivalConfidence: 0, survivalSource: "MODEL_ONLY", survivalLabel: "No later user pick", draftNowUrgency: 0, waitValue: 0, reachCost: 0, marketEvidenceLabel: observationLabel(profile, "NONE"), marketEvidenceLevel: "NONE", conditionalSurvival: true, liveRoomSurvivalEvidence: liveEvidence, liveRoomConfidence: 0, liveWaitCost: 0, marketPrecisionConfidence: 0, timingDirectionConfidence: 0, survivalNextTurn: 0, survivalTwoTurns: 0, survivalThirdTurn: 0, waitOpportunityCost: 0, timingLabel: "DRAFT NOW", timingBlend: 0, censoredSurvivalLowerBound: null, targetWindowStart: null, targetWindowCenter: null, targetWindowEnd: null, targetWindowLowerBound: null, userTurnsUntilTargetWindow: 0, censorDerivedWait: 0, exactMarketDerivedWait: 0, liveRoomDerivedWait: 0, multiTurnTargetDistanceWait: 0, alternativeUrgencyWait: 0, futureUserPickSurvival: [], lastSafeUserPick: null, acquisitionFrontierPick: null, userTurnsBeforeFrontier: 0 };
 }
 
 function modelOnlyTiming(currentPick: number, nextPick: number | null, rank: number, _pool: number, liveRoomSurvivalEvidence = 0): MarketTimingProjection {
@@ -241,8 +302,40 @@ function modelOnlyTiming(currentPick: number, nextPick: number | null, rank: num
   const waitOpportunityCost = Math.min(DRAFT_VALUE_CONFIG.market.maximumWaitOpportunityCost, liveWaitCost + Math.max(0, survival - .75) * 4);
   return { marketPickEstimate: null, marketRoundLow: null, marketRoundHigh: null, marketConfidence: 0, marketCostRank: null, modelValueRank: rank, valueLabel: "UNKNOWN", survivalEstimate: Math.round(survival * 100), survivalConfidence: Math.max(.2, liveRoomConfidence(liveRoomSurvivalEvidence)), survivalSource: "MODEL_ONLY", survivalLabel: survivalLabel(survival, .2), draftNowUrgency: (1 - survival) * 3, waitValue: Math.max(0, waitOpportunityCost - liveWaitCost), reachCost: 0, marketEvidenceLabel: "No market evidence", marketEvidenceLevel: "NONE", conditionalSurvival: true, liveRoomSurvivalEvidence, liveRoomConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), liveWaitCost, marketPrecisionConfidence: 0, timingDirectionConfidence: liveRoomConfidence(liveRoomSurvivalEvidence), survivalNextTurn: survival, survivalTwoTurns: Math.max(0, survival - .12), waitOpportunityCost, timingLabel: timingLabel(survival, waitOpportunityCost, nextPick), timingBlend: smoothTimingBlend(currentPick / Math.max(currentPick + Math.max(1, nextPick - currentPick), 1)) };
 }
+function deriveTargetWindow(observations: readonly { progress: number; rightCensored: boolean }[], config: LeagueConfig, currentPick: number, blendedRound: number | undefined): Pick<MarketTimingProjection, "censoredSurvivalLowerBound" | "targetWindowStart" | "targetWindowCenter" | "targetWindowEnd" | "targetWindowLowerBound" | "userTurnsUntilTargetWindow"> {
+  const exact = observations.filter((entry) => !entry.rightCensored).map((entry) => entry.progress).sort((left, right) => left - right);
+  const censored = observations.filter((entry) => entry.rightCensored).map((entry) => entry.progress).sort((left, right) => left - right);
+  const fromProgress = (progress: number | undefined) => progress === undefined ? null : progressToOverallPick(progress, config);
+  const startProgress = exact.length ? quantile(exact, .25) : blendedRound === undefined ? undefined : normalizeDraftProgress(roundEquivalentToOverallPick(blendedRound, config.teamCount), config.teamCount, config.rounds);
+  const centerProgress = exact.length ? quantile(exact, .5) : blendedRound === undefined ? undefined : normalizeDraftProgress(roundEquivalentToOverallPick(blendedRound, config.teamCount), config.teamCount, config.rounds);
+  const endProgress = exact.length ? quantile(exact, .75) : blendedRound === undefined ? undefined : normalizeDraftProgress(roundEquivalentToOverallPick(blendedRound, config.teamCount), config.teamCount, config.rounds);
+  const lowerBoundProgress = censored.length ? censored[0] : undefined;
+  const targetPick = fromProgress(startProgress ?? lowerBoundProgress);
+  const userTurnsUntilTargetWindow = targetPick === null
+    ? null
+    : getMyOverallPicks(config).filter((pick) => pick > currentPick && pick <= targetPick).length;
+  return { censoredSurvivalLowerBound: lowerBoundProgress ?? null, targetWindowStart: fromProgress(startProgress), targetWindowCenter: fromProgress(centerProgress), targetWindowEnd: fromProgress(endProgress), targetWindowLowerBound: fromProgress(lowerBoundProgress), userTurnsUntilTargetWindow };
+}
+function calculateWaitBreakdown(input: { exactCount: number; censoredCount: number; survivalNextTurn: number; survivalTwoTurns: number; timingDirectionConfidence: number; timingBlend: number; userTurnsUntilTargetWindow: number | null; liveRoomDerivedWait: number; intrinsicValueRank: number }): Pick<MarketTimingProjection, "censorDerivedWait" | "exactMarketDerivedWait" | "liveRoomDerivedWait" | "multiTurnTargetDistanceWait" | "alternativeUrgencyWait"> & { historicalWait: number; total: number } {
+  const maximum = DRAFT_VALUE_CONFIG.market.maximumWaitOpportunityCost;
+  const survival = Math.min(input.survivalNextTurn, input.survivalTwoTurns || input.survivalNextTurn);
+  const survivalStrength = clamp01((survival - .55) / .45);
+  const directionStrength = .3 + input.timingDirectionConfidence * .7;
+  const turns = input.userTurnsUntilTargetWindow ?? 0;
+  const distanceStrength = clamp01((turns - 1) / 3);
+  const exactMarketDerivedWait = input.exactCount ? maximum * .62 * survivalStrength * directionStrength : 0;
+  const censorDerivedWait = input.censoredCount ? maximum * .58 * survivalStrength * directionStrength * Math.min(1, input.censoredCount / 3) : 0;
+  const multiTurnTargetDistanceWait = (input.exactCount || input.censoredCount) && turns > 1 ? maximum * .32 * survivalStrength * directionStrength * distanceStrength : 0;
+  const alternativeUrgencyWait = 0;
+  const modelEdgeEscape = input.intrinsicValueRank <= DRAFT_VALUE_CONFIG.market.liveWait.eliteRankCutoff
+    ? DRAFT_VALUE_CONFIG.market.liveWait.eliteRankEscape
+    : 0;
+  const historicalWait = Math.min(maximum, (exactMarketDerivedWait + censorDerivedWait + multiTurnTargetDistanceWait + alternativeUrgencyWait) * input.timingBlend * (1 - modelEdgeEscape));
+  const total = Math.min(maximum, historicalWait + input.liveRoomDerivedWait);
+  return { censorDerivedWait, exactMarketDerivedWait, liveRoomDerivedWait: input.liveRoomDerivedWait, multiTurnTargetDistanceWait, alternativeUrgencyWait, historicalWait, total };
+}
 function normalizedMarketObservations(profile: MarketPlayerProfile, target: LeagueConfig): Array<{ progress: number; rightCensored: boolean }> {
-  if (profile.normalizedObservations?.length) return profile.normalizedObservations.map((entry) => ({ progress: clamp01(entry.draftProgress), rightCensored: entry.rightCensored }));
+  if (profile.normalizedObservations?.length) return profile.normalizedObservations.map((entry) => ({ progress: clamp01(entry.draftProgress ?? 0), rightCensored: entry.rightCensored }));
   // Legacy profiles did not preserve source dimensions. Their round-equivalent is
   // still reusable as an explicitly lower-confidence, target-config approximation.
   return [
@@ -277,10 +370,13 @@ function calculateLiveWaitCost(currentPick: number, nextPick: number | null, sur
 }
 function liveRoomConfidence(evidence: number): number { return Math.min(.9, evidence / DRAFT_VALUE_CONFIG.market.liveWait.fullEvidenceTurns * .85); }
 function observationLabel(profile: MarketPlayerProfile, level: MarketTimingProjection["marketEvidenceLevel"]): string {
+  const exactCount = profile.normalizedObservations?.filter((entry) => !entry.rightCensored).length ?? profile.observedRoundEquivalents?.length ?? 0;
+  const censoredCount = profile.normalizedObservations?.filter((entry) => entry.rightCensored).length ?? profile.rightCensoredRoundEquivalents?.length ?? 0;
   const pick = profile.observedOverallPicks?.[0];
-  if (pick !== undefined && (profile.observedOverallPicks?.length ?? 0) === 1) return `Picked #${pick} once (${level.replace("_", " ")})`;
-  if ((profile.observedRoundEquivalents?.length ?? 0) === 1) return `Picked around R${profile.observedRoundEquivalents![0].toFixed(1)} once (${level.replace("_", " ")})`;
-  if ((profile.rightCensoredRoundEquivalents?.length ?? 0) === 1) return `Undrafted through R${Math.max(1, profile.rightCensoredRoundEquivalents![0] - 1).toFixed(0)} once (${level.replace("_", " ")})`;
+  if (exactCount === 0 && censoredCount > 0) return `Undrafted in ${censoredCount} tracked mock${censoredCount === 1 ? "" : "s"}`;
+  if (exactCount === 1 && censoredCount > 0) return `1 late pick + ${censoredCount} undrafted observation${censoredCount === 1 ? "" : "s"}`;
+  if (pick !== undefined && exactCount === 1) return `Picked #${pick} once (${level.replace("_", " ")})`;
+  if (exactCount === 1 && profile.observedRoundEquivalents?.[0] !== undefined) return `Picked around R${profile.observedRoundEquivalents[0].toFixed(1)} once (${level.replace("_", " ")})`;
   return level === "NONE" ? "No market evidence" : `${profile.sampleCount ?? 0} market observations (${level.replace("_", " ")})`;
 }
 function lowSampleSurvivalLabel(value: number): string { return value >= .7 ? "Likely to survive (very low confidence)" : value <= .35 ? "May not survive (very low confidence)" : "Uncertain (very low confidence)"; }
@@ -302,3 +398,7 @@ function integer(value: unknown, fallback: number): number { return typeof value
 function validPositiveInteger(value: unknown): number | undefined { return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined; }
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function clamp01(value: number): number { return Math.min(1, Math.max(0, value)); }
+
+// Retained exported-compatible legacy helpers keep older serialized traces readable;
+// all new timing goes through absoluteMarketObservations/survivalAt above.
+void [deriveTargetWindow, calculateWaitBreakdown, normalizedMarketObservations, shrunkSurvival, lowSampleSurvivalLabel, calculateRoomPaceAdjustment, confidence];

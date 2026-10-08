@@ -1,0 +1,1655 @@
+{
+  "teamCount": 14,
+  "rounds": 13,
+  "format": "unknown",
+  "picks": [
+    {
+      "overallPick": 1,
+      "round": 1,
+      "pickInRound": 1,
+      "teamNumber": 1,
+      "playerId": "1641705",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 2,
+      "round": 1,
+      "pickInRound": 2,
+      "teamNumber": 2,
+      "playerId": "203999",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 3,
+      "round": 1,
+      "pickInRound": 3,
+      "teamNumber": 3,
+      "playerId": "1629029",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 4,
+      "round": 1,
+      "pickInRound": 4,
+      "teamNumber": 4,
+      "playerId": "1628983",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 5,
+      "round": 1,
+      "pickInRound": 5,
+      "teamNumber": 5,
+      "playerId": "1630595",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 6,
+      "round": 1,
+      "pickInRound": 6,
+      "teamNumber": 6,
+      "playerId": "203507",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 7,
+      "round": 1,
+      "pickInRound": 7,
+      "teamNumber": 7,
+      "playerId": "1628369",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 8,
+      "round": 1,
+      "pickInRound": 8,
+      "teamNumber": 8,
+      "playerId": "1630162",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 9,
+      "round": 1,
+      "pickInRound": 9,
+      "teamNumber": 9,
+      "playerId": "1630178",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 10,
+      "round": 1,
+      "pickInRound": 10,
+      "teamNumber": 10,
+      "playerId": "1630552",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 11,
+      "round": 1,
+      "pickInRound": 11,
+      "teamNumber": 11,
+      "playerId": "1630567",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 12,
+      "round": 1,
+      "pickInRound": 12,
+      "teamNumber": 12,
+      "playerId": "1630169",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 13,
+      "round": 1,
+      "pickInRound": 13,
+      "teamNumber": 13,
+      "playerId": "1628378",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 14,
+      "round": 1,
+      "pickInRound": 14,
+      "teamNumber": 14,
+      "playerId": "1642843",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 15,
+      "round": 2,
+      "pickInRound": 1,
+      "teamNumber": 14,
+      "playerId": "1626157",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 16,
+      "round": 2,
+      "pickInRound": 2,
+      "teamNumber": 13,
+      "playerId": "201142",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 17,
+      "round": 2,
+      "pickInRound": 3,
+      "teamNumber": 12,
+      "playerId": "1627750",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 18,
+      "round": 2,
+      "pickInRound": 4,
+      "teamNumber": 11,
+      "playerId": "1630578",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 19,
+      "round": 2,
+      "pickInRound": 5,
+      "teamNumber": 10,
+      "playerId": "1630581",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 20,
+      "round": 2,
+      "pickInRound": 6,
+      "teamNumber": 9,
+      "playerId": "1629027",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 21,
+      "round": 2,
+      "pickInRound": 7,
+      "teamNumber": 8,
+      "playerId": "1641708",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 22,
+      "round": 2,
+      "pickInRound": 8,
+      "teamNumber": 7,
+      "playerId": "1630559",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 23,
+      "round": 2,
+      "pickInRound": 9,
+      "teamNumber": 6,
+      "playerId": "1626164",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 24,
+      "round": 2,
+      "pickInRound": 10,
+      "teamNumber": 5,
+      "playerId": "1631096",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 25,
+      "round": 2,
+      "pickInRound": 11,
+      "teamNumber": 4,
+      "playerId": "201939",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 26,
+      "round": 2,
+      "pickInRound": 12,
+      "teamNumber": 3,
+      "playerId": "1630163",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 27,
+      "round": 2,
+      "pickInRound": 13,
+      "teamNumber": 2,
+      "playerId": "1628973",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 28,
+      "round": 2,
+      "pickInRound": 14,
+      "teamNumber": 1,
+      "playerId": "1630596",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 29,
+      "round": 3,
+      "pickInRound": 1,
+      "teamNumber": 1,
+      "playerId": "1631105",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 30,
+      "round": 3,
+      "pickInRound": 2,
+      "teamNumber": 2,
+      "playerId": "201935",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 31,
+      "round": 3,
+      "pickInRound": 3,
+      "teamNumber": 3,
+      "playerId": "1628389",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 32,
+      "round": 3,
+      "pickInRound": 4,
+      "teamNumber": 4,
+      "playerId": "1630530",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 33,
+      "round": 3,
+      "pickInRound": 5,
+      "teamNumber": 5,
+      "playerId": "1631114",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 34,
+      "round": 3,
+      "pickInRound": 6,
+      "teamNumber": 6,
+      "playerId": "203076",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 35,
+      "round": 3,
+      "pickInRound": 7,
+      "teamNumber": 7,
+      "playerId": "1628374",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 36,
+      "round": 3,
+      "pickInRound": 8,
+      "teamNumber": 8,
+      "playerId": "1627734",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 37,
+      "round": 3,
+      "pickInRound": 9,
+      "teamNumber": 9,
+      "playerId": "1628401",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 38,
+      "round": 3,
+      "pickInRound": 10,
+      "teamNumber": 10,
+      "playerId": "1631094",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 39,
+      "round": 3,
+      "pickInRound": 11,
+      "teamNumber": 11,
+      "playerId": "202695",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 40,
+      "round": 3,
+      "pickInRound": 12,
+      "teamNumber": 12,
+      "playerId": "1642270",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 41,
+      "round": 3,
+      "pickInRound": 13,
+      "teamNumber": 13,
+      "playerId": "1641706",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 42,
+      "round": 3,
+      "pickInRound": 14,
+      "teamNumber": 14,
+      "playerId": "1631117",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 43,
+      "round": 4,
+      "pickInRound": 1,
+      "teamNumber": 14,
+      "playerId": "1627749",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 44,
+      "round": 4,
+      "pickInRound": 2,
+      "teamNumber": 13,
+      "playerId": "2544",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 45,
+      "round": 4,
+      "pickInRound": 3,
+      "teamNumber": 12,
+      "playerId": "1628991",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 46,
+      "round": 4,
+      "pickInRound": 4,
+      "teamNumber": 11,
+      "playerId": "1630166",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 47,
+      "round": 4,
+      "pickInRound": 5,
+      "teamNumber": 10,
+      "playerId": "1627783",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 48,
+      "round": 4,
+      "pickInRound": 6,
+      "teamNumber": 9,
+      "playerId": "1641718",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 49,
+      "round": 4,
+      "pickInRound": 7,
+      "teamNumber": 8,
+      "playerId": "1627759",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 50,
+      "round": 4,
+      "pickInRound": 8,
+      "teamNumber": 7,
+      "playerId": "202681",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 51,
+      "round": 4,
+      "pickInRound": 9,
+      "teamNumber": 6,
+      "playerId": "1630532",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 52,
+      "round": 4,
+      "pickInRound": 10,
+      "teamNumber": 5,
+      "playerId": "1628386",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 53,
+      "round": 4,
+      "pickInRound": 11,
+      "teamNumber": 4,
+      "playerId": "203954",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 54,
+      "round": 4,
+      "pickInRound": 12,
+      "teamNumber": 3,
+      "playerId": "1630217",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 55,
+      "round": 4,
+      "pickInRound": 13,
+      "teamNumber": 2,
+      "playerId": "1630168",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 56,
+      "round": 4,
+      "pickInRound": 14,
+      "teamNumber": 1,
+      "playerId": "1630700",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 57,
+      "round": 5,
+      "pickInRound": 1,
+      "teamNumber": 1,
+      "playerId": "1641824",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 58,
+      "round": 5,
+      "pickInRound": 2,
+      "teamNumber": 2,
+      "playerId": "1643409",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 59,
+      "round": 5,
+      "pickInRound": 3,
+      "teamNumber": 3,
+      "playerId": "1629636",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 60,
+      "round": 5,
+      "pickInRound": 4,
+      "teamNumber": 4,
+      "playerId": "1627826",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 61,
+      "round": 5,
+      "pickInRound": 5,
+      "teamNumber": 5,
+      "playerId": "1629638",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 62,
+      "round": 5,
+      "pickInRound": 6,
+      "teamNumber": 6,
+      "playerId": "1642851",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 63,
+      "round": 5,
+      "pickInRound": 7,
+      "teamNumber": 7,
+      "playerId": "1629675",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 64,
+      "round": 5,
+      "pickInRound": 8,
+      "teamNumber": 8,
+      "playerId": "1629008",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 65,
+      "round": 5,
+      "pickInRound": 9,
+      "teamNumber": 9,
+      "playerId": "1631157",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 66,
+      "round": 5,
+      "pickInRound": 10,
+      "teamNumber": 10,
+      "playerId": "1642264",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 67,
+      "round": 5,
+      "pickInRound": 11,
+      "teamNumber": 11,
+      "playerId": "1629639",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 68,
+      "round": 5,
+      "pickInRound": 12,
+      "teamNumber": 12,
+      "playerId": "1642259",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 69,
+      "round": 5,
+      "pickInRound": 13,
+      "teamNumber": 13,
+      "playerId": "1627742",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 70,
+      "round": 5,
+      "pickInRound": 14,
+      "teamNumber": 14,
+      "playerId": "1628384",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 71,
+      "round": 6,
+      "pickInRound": 1,
+      "teamNumber": 14,
+      "playerId": "1642276",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 72,
+      "round": 6,
+      "pickInRound": 2,
+      "teamNumber": 13,
+      "playerId": "203081",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 73,
+      "round": 6,
+      "pickInRound": 3,
+      "teamNumber": 12,
+      "playerId": "1641744",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 74,
+      "round": 6,
+      "pickInRound": 4,
+      "teamNumber": 11,
+      "playerId": "1629627",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 75,
+      "round": 6,
+      "pickInRound": 5,
+      "teamNumber": 10,
+      "playerId": "203944",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 76,
+      "round": 6,
+      "pickInRound": 6,
+      "teamNumber": 9,
+      "playerId": "1629630",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 77,
+      "round": 6,
+      "pickInRound": 7,
+      "teamNumber": 8,
+      "playerId": "1628368",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 78,
+      "round": 6,
+      "pickInRound": 8,
+      "teamNumber": 7,
+      "playerId": "1630202",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 79,
+      "round": 6,
+      "pickInRound": 9,
+      "teamNumber": 6,
+      "playerId": "1626181",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 80,
+      "round": 6,
+      "pickInRound": 10,
+      "teamNumber": 5,
+      "playerId": "1641709",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 81,
+      "round": 6,
+      "pickInRound": 11,
+      "teamNumber": 4,
+      "playerId": "1630183",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 82,
+      "round": 6,
+      "pickInRound": 12,
+      "teamNumber": 3,
+      "playerId": "203497",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 83,
+      "round": 6,
+      "pickInRound": 13,
+      "teamNumber": 2,
+      "playerId": "202331",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 84,
+      "round": 6,
+      "pickInRound": 14,
+      "teamNumber": 1,
+      "playerId": "1628969",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 85,
+      "round": 7,
+      "pickInRound": 1,
+      "teamNumber": 1,
+      "playerId": "1630193",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 86,
+      "round": 7,
+      "pickInRound": 2,
+      "teamNumber": 2,
+      "playerId": "1629632",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 87,
+      "round": 7,
+      "pickInRound": 3,
+      "teamNumber": 3,
+      "playerId": "1642845",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 88,
+      "round": 7,
+      "pickInRound": 4,
+      "teamNumber": 4,
+      "playerId": "1642907",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 89,
+      "round": 7,
+      "pickInRound": 5,
+      "teamNumber": 5,
+      "playerId": "1642844",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 90,
+      "round": 7,
+      "pickInRound": 6,
+      "teamNumber": 6,
+      "playerId": "203952",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 91,
+      "round": 7,
+      "pickInRound": 7,
+      "teamNumber": 7,
+      "playerId": "1643410",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 92,
+      "round": 7,
+      "pickInRound": 8,
+      "teamNumber": 8,
+      "playerId": "1629651",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 93,
+      "round": 7,
+      "pickInRound": 9,
+      "teamNumber": 9,
+      "playerId": "1630549",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 94,
+      "round": 7,
+      "pickInRound": 10,
+      "teamNumber": 10,
+      "playerId": "1629614",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 95,
+      "round": 7,
+      "pickInRound": 11,
+      "teamNumber": 11,
+      "playerId": "1630591",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 96,
+      "round": 7,
+      "pickInRound": 12,
+      "teamNumber": 12,
+      "playerId": "1643407",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 97,
+      "round": 7,
+      "pickInRound": 13,
+      "teamNumber": 13,
+      "playerId": "1642852",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 98,
+      "round": 7,
+      "pickInRound": 14,
+      "teamNumber": 14,
+      "playerId": "1629660",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 99,
+      "round": 8,
+      "pickInRound": 1,
+      "teamNumber": 14,
+      "playerId": "1628404",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 100,
+      "round": 8,
+      "pickInRound": 2,
+      "teamNumber": 13,
+      "playerId": "1631095",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 101,
+      "round": 8,
+      "pickInRound": 3,
+      "teamNumber": 12,
+      "playerId": "203897",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 102,
+      "round": 8,
+      "pickInRound": 4,
+      "teamNumber": 11,
+      "playerId": "1628381",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 103,
+      "round": 8,
+      "pickInRound": 5,
+      "teamNumber": 10,
+      "playerId": "1629628",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 104,
+      "round": 8,
+      "pickInRound": 6,
+      "teamNumber": 9,
+      "playerId": "1628970",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 105,
+      "round": 8,
+      "pickInRound": 7,
+      "teamNumber": 8,
+      "playerId": "1626167",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 106,
+      "round": 8,
+      "pickInRound": 8,
+      "teamNumber": 7,
+      "playerId": "201942",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 107,
+      "round": 8,
+      "pickInRound": 9,
+      "teamNumber": 6,
+      "playerId": "1628392",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 108,
+      "round": 8,
+      "pickInRound": 10,
+      "teamNumber": 5,
+      "playerId": "1630245",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 109,
+      "round": 8,
+      "pickInRound": 11,
+      "teamNumber": 4,
+      "playerId": "1641739",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 110,
+      "round": 8,
+      "pickInRound": 12,
+      "teamNumber": 3,
+      "playerId": "203468",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 111,
+      "round": 8,
+      "pickInRound": 13,
+      "teamNumber": 2,
+      "playerId": "203994",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 112,
+      "round": 8,
+      "pickInRound": 14,
+      "teamNumber": 1,
+      "playerId": "1642867",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 113,
+      "round": 9,
+      "pickInRound": 1,
+      "teamNumber": 1,
+      "playerId": "1641717",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 114,
+      "round": 9,
+      "pickInRound": 2,
+      "teamNumber": 2,
+      "playerId": "1631212",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 115,
+      "round": 9,
+      "pickInRound": 3,
+      "teamNumber": 3,
+      "playerId": "1643408",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 116,
+      "round": 9,
+      "pickInRound": 4,
+      "teamNumber": 4,
+      "playerId": "1630174",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 117,
+      "round": 9,
+      "pickInRound": 5,
+      "teamNumber": 5,
+      "playerId": "1629674",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 118,
+      "round": 9,
+      "pickInRound": 6,
+      "teamNumber": 6,
+      "playerId": "1631099",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 119,
+      "round": 9,
+      "pickInRound": 7,
+      "teamNumber": 7,
+      "playerId": "1641764",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 120,
+      "round": 9,
+      "pickInRound": 8,
+      "teamNumber": 8,
+      "playerId": "1630558",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 121,
+      "round": 9,
+      "pickInRound": 9,
+      "teamNumber": 9,
+      "playerId": "1642863",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 122,
+      "round": 9,
+      "pickInRound": 10,
+      "teamNumber": 10,
+      "playerId": "1642274",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 123,
+      "round": 9,
+      "pickInRound": 11,
+      "teamNumber": 11,
+      "playerId": "1627751",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 124,
+      "round": 9,
+      "pickInRound": 12,
+      "teamNumber": 12,
+      "playerId": "1642273",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 125,
+      "round": 9,
+      "pickInRound": 13,
+      "teamNumber": 13,
+      "playerId": "1629655",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 126,
+      "round": 9,
+      "pickInRound": 14,
+      "teamNumber": 14,
+      "playerId": "1642263",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 127,
+      "round": 10,
+      "pickInRound": 1,
+      "teamNumber": 14,
+      "playerId": "1642865",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 128,
+      "round": 10,
+      "pickInRound": 2,
+      "teamNumber": 13,
+      "playerId": "1629060",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 129,
+      "round": 10,
+      "pickInRound": 3,
+      "teamNumber": 12,
+      "playerId": "1628976",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 130,
+      "round": 10,
+      "pickInRound": 4,
+      "teamNumber": 11,
+      "playerId": "1642856",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 131,
+      "round": 10,
+      "pickInRound": 5,
+      "teamNumber": 10,
+      "playerId": "1630170",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 132,
+      "round": 10,
+      "pickInRound": 6,
+      "teamNumber": 9,
+      "playerId": "1629656",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 133,
+      "round": 10,
+      "pickInRound": 7,
+      "teamNumber": 8,
+      "playerId": "203932",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 134,
+      "round": 10,
+      "pickInRound": 8,
+      "teamNumber": 7,
+      "playerId": "1629023",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 135,
+      "round": 10,
+      "pickInRound": 9,
+      "teamNumber": 6,
+      "playerId": "1631170",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 136,
+      "round": 10,
+      "pickInRound": 10,
+      "teamNumber": 5,
+      "playerId": "1630228",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 137,
+      "round": 10,
+      "pickInRound": 11,
+      "teamNumber": 4,
+      "playerId": "1631221",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 138,
+      "round": 10,
+      "pickInRound": 12,
+      "teamNumber": 3,
+      "playerId": "1630224",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 139,
+      "round": 10,
+      "pickInRound": 13,
+      "teamNumber": 2,
+      "playerId": "1630180",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 140,
+      "round": 10,
+      "pickInRound": 14,
+      "teamNumber": 1,
+      "playerId": "1630529",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 141,
+      "round": 11,
+      "pickInRound": 1,
+      "teamNumber": 1,
+      "playerId": "1629661",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 142,
+      "round": 11,
+      "pickInRound": 2,
+      "teamNumber": 2,
+      "playerId": "201950",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 143,
+      "round": 11,
+      "pickInRound": 3,
+      "teamNumber": 3,
+      "playerId": "202699",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 144,
+      "round": 11,
+      "pickInRound": 4,
+      "teamNumber": 4,
+      "playerId": "203110",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 145,
+      "round": 11,
+      "pickInRound": 5,
+      "teamNumber": 5,
+      "playerId": "1631217",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 146,
+      "round": 11,
+      "pickInRound": 6,
+      "teamNumber": 6,
+      "playerId": "202696",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 147,
+      "round": 11,
+      "pickInRound": 7,
+      "teamNumber": 7,
+      "playerId": "1630572",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 148,
+      "round": 11,
+      "pickInRound": 8,
+      "teamNumber": 8,
+      "playerId": "1630611",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 149,
+      "round": 11,
+      "pickInRound": 9,
+      "teamNumber": 9,
+      "playerId": "1628415",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 150,
+      "round": 11,
+      "pickInRound": 10,
+      "teamNumber": 10,
+      "playerId": "1629028",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 151,
+      "round": 11,
+      "pickInRound": 11,
+      "teamNumber": 11,
+      "playerId": "1627832",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 152,
+      "round": 11,
+      "pickInRound": 12,
+      "teamNumber": 12,
+      "playerId": "1642349",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 153,
+      "round": 11,
+      "pickInRound": 13,
+      "teamNumber": 13,
+      "playerId": "1641710",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 154,
+      "round": 11,
+      "pickInRound": 14,
+      "teamNumber": 14,
+      "playerId": "204001",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 155,
+      "round": 12,
+      "pickInRound": 1,
+      "teamNumber": 14,
+      "playerId": "1642846",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 156,
+      "round": 12,
+      "pickInRound": 2,
+      "teamNumber": 13,
+      "playerId": "1641796",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 157,
+      "round": 12,
+      "pickInRound": 3,
+      "teamNumber": 12,
+      "playerId": "1630200",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 158,
+      "round": 12,
+      "pickInRound": 4,
+      "teamNumber": 11,
+      "playerId": "1642875",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 159,
+      "round": 12,
+      "pickInRound": 5,
+      "teamNumber": 10,
+      "playerId": "202710",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 160,
+      "round": 12,
+      "pickInRound": 6,
+      "teamNumber": 9,
+      "playerId": "1643411",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 161,
+      "round": 12,
+      "pickInRound": 7,
+      "teamNumber": 8,
+      "playerId": "1631097",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 162,
+      "round": 12,
+      "pickInRound": 8,
+      "teamNumber": 7,
+      "playerId": "1629645",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 163,
+      "round": 12,
+      "pickInRound": 9,
+      "teamNumber": 6,
+      "playerId": "1626162",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 164,
+      "round": 12,
+      "pickInRound": 10,
+      "teamNumber": 5,
+      "playerId": "201572",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 165,
+      "round": 12,
+      "pickInRound": 11,
+      "teamNumber": 4,
+      "playerId": "1631106",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 166,
+      "round": 12,
+      "pickInRound": 12,
+      "teamNumber": 3,
+      "playerId": "1626171",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 167,
+      "round": 12,
+      "pickInRound": 13,
+      "teamNumber": 2,
+      "playerId": "1630194",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 168,
+      "round": 12,
+      "pickInRound": 14,
+      "teamNumber": 1,
+      "playerId": "1628960",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 169,
+      "round": 13,
+      "pickInRound": 1,
+      "teamNumber": 1,
+      "playerId": "1629622",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 170,
+      "round": 13,
+      "pickInRound": 2,
+      "teamNumber": 2,
+      "playerId": "1641726",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 171,
+      "round": 13,
+      "pickInRound": 3,
+      "teamNumber": 3,
+      "playerId": "1642268",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 172,
+      "round": 13,
+      "pickInRound": 4,
+      "teamNumber": 4,
+      "playerId": "1642450",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 173,
+      "round": 13,
+      "pickInRound": 5,
+      "teamNumber": 5,
+      "playerId": "1642847",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 174,
+      "round": 13,
+      "pickInRound": 6,
+      "teamNumber": 6,
+      "playerId": "203924",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 175,
+      "round": 13,
+      "pickInRound": 7,
+      "teamNumber": 7,
+      "playerId": "1642345",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 176,
+      "round": 13,
+      "pickInRound": 8,
+      "teamNumber": 8,
+      "playerId": "203471",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 177,
+      "round": 13,
+      "pickInRound": 9,
+      "teamNumber": 9,
+      "playerId": "1629631",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 178,
+      "round": 13,
+      "pickInRound": 10,
+      "teamNumber": 10,
+      "playerId": "1631128",
+      "isMyTeam": true,
+      "pickProvenance": "USER_REAL_PICK"
+    },
+    {
+      "overallPick": 179,
+      "round": 13,
+      "pickInRound": 11,
+      "teamNumber": 11,
+      "playerId": "1629011",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 180,
+      "round": 13,
+      "pickInRound": 12,
+      "teamNumber": 12,
+      "playerId": "1630191",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 181,
+      "round": 13,
+      "pickInRound": 13,
+      "teamNumber": 13,
+      "playerId": "1631222",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    },
+    {
+      "overallPick": 182,
+      "round": 13,
+      "pickInRound": 14,
+      "teamNumber": 14,
+      "playerId": "1629673",
+      "isMyTeam": false,
+      "pickProvenance": "OBSERVED_ROOM"
+    }
+  ],
+  "scoringFingerprint": "AST:1.5|BLK:2|DD:5|DREB:1.2|OREB:1.4|PTS:1|STL:2|TD:5|TO:-1",
+  "metadata": {
+    "teamCount": 14,
+    "rounds": 13,
+    "userDraftSlot": 10,
+    "scoringFingerprint": "AST:1.5|BLK:2|DD:5|DREB:1.2|OREB:1.4|PTS:1|STL:2|TD:5|TO:-1",
+    "rosterFingerprint": "teams:14|rounds:13|G:3|F:3|C:2|UTIL:2|BN:3",
+    "createdAt": "2026-10-05T12:53:30.386Z"
+  },
+  "fingerprint": "mock-ddebddd8"
+}

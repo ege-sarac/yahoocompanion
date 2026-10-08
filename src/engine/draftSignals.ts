@@ -9,8 +9,9 @@ export function calculateRecentPositionRuns(
   windowSize = RECOMMENDATION_CONFIG.draftSignals.recentWindow,
 ): Record<YahooPosition, PositionRunSummary> {
   const byId = new Map(players.map((player) => [player.id, player]));
-  const recent = picks.slice(-windowSize);
-  const earlier = picks.slice(0, -windowSize);
+  const genuine = picks.filter((pick) => pick.pickProvenance !== "SYNTHETIC_PADDING" && pick.pickProvenance !== "MANUAL_EXTENSION");
+  const recent = genuine.slice(-windowSize);
+  const earlier = genuine.slice(0, -windowSize);
   return Object.fromEntries(POSITIONS.map((position) => {
     const recentCount = fractionalCount(recent, byId, position);
     const recentRate = recent.length ? recentCount / recent.length : 0;

@@ -14,14 +14,16 @@ export interface ProjectionSanitySummary {
   unexplainedProjectionCompression: boolean;
   unexplainedProjectionInflation: boolean;
   projectionChangeReasons: string[];
+  externalHistoricalFantasyPPG?: number | null;
+  externalReferenceProjectionGap?: number | null;
 }
 
 export function calculateRecentSeasonFantasyPPG(player: Player, config: LeagueConfig): number | null {
   return historicalBaseline(player, config).latestFantasy;
 }
 
-export function calculateProjectionSanity(player: Player, base: Projection, final: Projection, config: LeagueConfig, metrics: ProjectionMetrics, role?: RoleContextSummary, team?: TeamContextSummary): ProjectionSanitySummary {
-  const cacheKey = [base.projectedFantasyPointsPerGame, base.projectedMinutes, final.projectedFantasyPointsPerGame, final.projectedMinutes, player.injuryStatus, metrics.careerStageProjection?.careerTrend, metrics.roleAssessment?.currentTeamContinuity, role?.absenceDependencyScore, role?.lateSeasonRegime, team?.adjustmentPercent, Object.values(config.scoring).join("|")].join("|");
+export function calculateProjectionSanity(player: Player, base: Projection, final: Projection, config: LeagueConfig, metrics: ProjectionMetrics, role?: RoleContextSummary, team?: TeamContextSummary, externalHistoricalFantasyPPG?: number | null): ProjectionSanitySummary {
+  const cacheKey = [base.projectedFantasyPointsPerGame, base.projectedMinutes, final.projectedFantasyPointsPerGame, final.projectedMinutes, player.injuryStatus, metrics.careerStageProjection?.careerTrend, metrics.roleAssessment?.currentTeamContinuity, role?.absenceDependencyScore, role?.lateSeasonRegime, team?.adjustmentPercent, externalHistoricalFantasyPPG, Object.values(config.scoring).join("|")].join("|");
   const cache = projectionSanityCache.get(player);
   const cached = cache?.get(cacheKey);
   if (cached) return cached;
@@ -46,7 +48,7 @@ export function calculateProjectionSanity(player: Player, base: Projection, fina
   const unexplainedProjectionInflation = ratio !== null && ratio > DRAFT_VALUE_CONFIG.projectionSanity.strongInflationRatio && !substantialEvidence;
   if (unexplainedProjectionCompression) reasons.push("UNEXPLAINED_PROJECTION_COMPRESSION");
   if (unexplainedProjectionInflation) reasons.push("UNEXPLAINED_PROJECTION_INFLATION");
-  const summary = { latestSeasonFantasyPPG, previousSeasonFantasyPPG, weightedHistoricalFantasyPPG, projectionCompressionRatio: ratio, unexplainedProjectionCompression, unexplainedProjectionInflation, projectionChangeReasons: reasons };
+  const summary = { latestSeasonFantasyPPG, previousSeasonFantasyPPG, weightedHistoricalFantasyPPG, projectionCompressionRatio: ratio, unexplainedProjectionCompression, unexplainedProjectionInflation, projectionChangeReasons: reasons, externalHistoricalFantasyPPG: externalHistoricalFantasyPPG ?? null, externalReferenceProjectionGap: externalHistoricalFantasyPPG === undefined || externalHistoricalFantasyPPG === null ? null : final.projectedFantasyPointsPerGame - externalHistoricalFantasyPPG };
   const entries = cache ?? new Map<string, ProjectionSanitySummary>();
   entries.set(cacheKey, summary);
   projectionSanityCache.set(player, entries);
