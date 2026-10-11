@@ -31,5 +31,6 @@ Thumbs.db
 # Local scratch data
 data/raw/*
 !data/raw/.gitkeep
-data/processed/*
-!data/processed/.gitkeep
+
+# Processed JSON is the versioned offline data bundle used by the local app.
+# Keep raw source downloads out of Git, but ship processed files so a clone can run.
