@@ -40,6 +40,19 @@ npm.cmd run draft:replay -- data/manual/replay-smoke-draft.json
 npm.cmd run simulate:draft -- --runs=20 --seed=20260913
 ```
 
+## GitHub Pages deployment
+
+This repository is configured for the project Pages URL `https://ege-sarac.github.io/yahoocompanion/`. The production build uses that repository subpath for JavaScript, CSS, and processed-data URLs, while `npm.cmd run dev` still serves locally at `http://localhost:5173/`.
+
+One-time GitHub setup:
+
+1. Open the repository on GitHub and go to **Settings → Pages**.
+2. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+3. Commit and push `.github/workflows/deploy-pages.yml` and the Vite configuration change to `main`.
+4. Open the repository **Actions** tab, wait for “Deploy YahooCompanion to GitHub Pages” to finish, then open the URL shown by its deploy step.
+
+Future pushes to `main` redeploy automatically. To test the built Pages version locally, run `npm.cmd run build`, then `npm.cmd run preview` and open the `/yahoocompanion/` path printed by Vite. Do not configure Pages to serve the raw `main` branch: GitHub Pages cannot compile Vite/TypeScript source files itself.
+
 ## Draft-day workflow
 
 - **Draft** provides keyboard-first player search, manual pick entry, undo, confirmed draft reset, recent history, current team on the clock, and an on-clock Top 5.
